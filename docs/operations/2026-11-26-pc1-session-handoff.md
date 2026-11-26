@@ -24,17 +24,21 @@
 ### 2-1. push 기다리는 커밋
 - `3d7128a2` JMeter 결과를 D 드라이브로(`run.sh` `OUT_DIR` 기본 `/d/pmart-perf/jmeter`) + 이 인수인계 문서 커밋. **사용자가 "푸시해" 하면** `git pull --rebase --autostash` 뒤 push.
 
-### 2-2. "자주 산 상품" ①·② (사용자 결정 2026-11-26 "1, 2로 할건데")
-- **정한 것**: 최근 **6개월** · **2번 이상**(서로 다른 주문 수) 산 상품, 횟수 많은 순 → 마지막 구매 최근 순. 취소(CANCELLED)·만료(EXPIRED) 주문, 숨긴 주문(`hidden_at`), 출고 전 전부 취소된 줄(`quantity − cancelled_before_ship_qty = 0`)은 뺀다.
-- **① 따로 목록**(백엔드 — order-service): 고객 본인 조회 하나.
-  - 안: `GET /api/v1/orders/frequent-items?windowDays=180&minOrders=2&limit=20`(CUSTOMER 만, `DraftService.currentCustomer()`). 글자 그대로의 경로라 `/orders/{orderId}` 와 안 겹친다(`/orders/lookups`·`/orders/metrics` 와 같은 방식 — 게이트웨이 라우트 `/api/v1/orders/**` 그대로, 허용 목록만 다시 만들기).
-  - 응답 안: `{from, items[{sku, productId, productName, optionLabel, orderCount, totalQuantity, lastPurchasedAt, imageUrl}]}` — 이름·옵션은 주문 당시 사본(가장 최근 주문 것), 사진은 `Upstreams.productImages`(BR-71 과 같음, 실패면 null).
-  - 원재료: `customer_order`(account_id·status·confirmed_at·hidden_at) × `customer_order_line`(sku·product_id·product_name·option_label·quantity·cancelled_before_ship_qty). 새 표·Flyway 없음. 색인 `ix_customer_order_account (account_id, confirmed_at DESC, …)` 가 있다.
-  - 계약 order-service 0.23.0 → **0.24.0**. 시험은 `CustomerOrderHistoryIT` 의 `order(...)` 도우미로 주문을 넣어(이름 순서대로 SKU E-0000000n) 6개월 안·밖, 2번·1번, 취소·숨김 제외를 본다.
-  - **시작 전에 사용자에게 위 안(경로·응답·기본값)을 보여 주고 "만들어" 를 받는다** — 아직 만들라는 말은 없었다(2026-11-26 "1, 2로 할건데 지금 해야할목록 인수인계 문서 작성해줘").
-- **② 검색창 빈칸 제안**(화면 — 고객앱): 검색어 입력 전 화면에 ① 목록을 칩으로. 검색 서비스는 바꾸지 않는다. ① 이 생기면 클라이언트 handoff `docs/handoff/clients/customer-app/YYYY-MM-DD-request-frequent-items.md`(보낸 영역 platform)로 알린다.
-- ③ 검색 순위 반영은 하지 않는다(검색에 개인 데이터·응답 시간·정렬 설명 문제 — 검토 결과). 나중에 하더라도 결과 카드에 "전에 산 상품" 표시만.
-- 같은 집계를 나중에 리뷰 "재구매" 표시(고객앱 R4 `repurchased`)·백오피스 재구매율(요청 O-13)에 쓸 수 있다.
+### 2-2. 구매 기록 활용 — 자주 산 상품 ①·② + 리뷰 재구매 표시 + 백오피스 재구매율 (사용자 결정 2026-11-26)
+- 사용자: "1, 2로 할건데" → "리뷰 '재구매' 표시, 백오피스 재구매율까지 반영되게 하고 싶은데 검색순위 반영은 안할게".
+- **범위 = 아래 네 가지. 검색 순위 반영(③)은 하지 않는다**(검색 서비스는 바꾸지 않음 — `docs/architecture/product-search.md` §15).
+- **아직 만들라는 말은 없다** — 시작 전에 아래 안(경로·응답·기본값·정의)을 사용자에게 보여 주고 "만들어"를 받는다. 넷을 한 번에 할지 나눌지도 묻는다.
+- 공통 정의: "산 것" = 확정 주문(customer_order) 중 CANCELLED·EXPIRED 아님, 출고 전 전부 취소된 줄(`quantity − cancelled_before_ship_qty = 0`) 제외. 횟수 = **서로 다른 주문 수**(한 주문에 2개 담은 것은 1번).
+
+| # | 무엇 | 어디 | 안 | 시간(대략) |
+|---|---|---|---|---|
+| ① | 자주 산 상품 목록 | order-service(PC 1) | `GET /api/v1/orders/frequent-items?windowDays=180&minOrders=2&limit=20`(CUSTOMER 본인, 숨긴 주문 제외) → `{from, items[{sku, productId, productName, optionLabel, orderCount, totalQuantity, lastPurchasedAt, imageUrl}]}`, 횟수 많은 순 → 마지막 구매 최근 순. 이름·옵션은 가장 최근 주문 사본, 사진 `Upstreams.productImages`. 글자 그대로 경로(`/orders/lookups`·`/orders/metrics` 와 같은 방식) — 게이트웨이 라우트 그대로, 허용 목록만. 계약 0.23.0 → 0.24.0, Flyway 없음 | 1~1.5시간 |
+| ② | 검색창 빈칸 제안 | 고객앱(그쪽 세션) + PC 1 요청 문서 | 검색어 입력 전 화면에 ① 을 칩으로. PC 1 은 `docs/handoff/clients/customer-app/YYYY-MM-DD-request-frequent-items.md`(보낸 영역 platform)만 | 백엔드 10~20분 |
+| R4 | 리뷰 "재구매" 표시 | review-service(PC 1 — 고객앱 요청 `pmart-clients docs/handoff/customer-app/2026-11-25-backend-product-page.md` R4 `repurchased`) | 리뷰 공개 조회 항목에 `repurchased`(boolean) = 작성자가 **그 상품을 서로 다른 주문 2번 이상** 받은 회원. **order 를 부르지 않고** review-service 자기 표 `review_eligibility`(배송 완료 품목 — order_id·account_id·product_id)로 쪽 하나에 한 번 집계(`count(DISTINCT order_id) ≥ 2`). 한계: 배송 완료된 것만 센다(①과 약간 다를 수 있음), review-service 가 생기기 전(2026-11-16 전) 배송은 없음 — 사용자에게 이 정의로 될지 확인 | 30분~1시간 |
+| O-13 | 백오피스 재구매율 | order-service(PC 1 — 요청 `docs/architecture/service-requests/order-service.md` O-13, PC 2 #365) | 기간 안 고객의 분자·분모: 주문 1건 이상 고객 수(분모)·2건 이상(재구매)·1건만(이탈 — 사용자 결정 2026-11-23 "한 번 사고 다시는 안 산 고객 비율")·누적 구매액·평균 구매 횟수. 비율은 화면 계산(BO-28). 권한은 `OrderMetricsRules.access`(OPERATOR_ADMIN 전 센터·MFC_SUPERVISOR 자기 센터) 그대로, 기간 상한 366일 안. `/orders/metrics/customers` 같은 글자 그대로 경로. 기간 기준(가입·첫 구매·확정 시각)은 요청서대로 — 애매하면 사용자에게 | 1~2시간 |
+
+- 같은 정의를 쓰도록 order 쪽 집계 규칙은 `domain` 에 한 곳(예: `PurchaseCountRules`)으로 두고 ①·O-13 이 같이 쓴다. R4 는 서비스가 달라 같은 정의를 review-service 에 따로 둔다(서비스 경계 — 다른 서비스 DB 접근 금지).
+- 끝나면: 고객앱 회신(①·R4), 백오피스(PC 2) 회신(O-13 — 공용 표 `service-requests/README.md` O-13 상태), 일지.
 
 ### 2-3. JMeter 부하 시험
 - 계획·순서: `docs/operations/2026-11-26-jmeter-load-test-plan.md` §6 그대로(다른 세션에 시간 알리기 → 비회원 토큰 100개 → 1분 확인 → 10·50·100명 → 결과 문서).
