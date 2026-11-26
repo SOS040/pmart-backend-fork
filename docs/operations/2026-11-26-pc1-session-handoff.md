@@ -33,6 +33,7 @@
   - O-13 금액 = 줄 금액 − 할인 분담 × 남은 수량 ÷ 주문 수량(top-products 와 같은 산식, 배달팁·봉투값 빼고, 반품·환불 빼지 않음).
   - R4 정의 그대로(배송 완료만 셈, 2026-11-16 전 배송 없음 — 사용자 받아들임).
   - ① 상한: windowDays 1~365(기본 180), minOrders 1~10(기본 2), limit 1~50(기본 20).
+  - **끝남(2026-11-26 오후)**: 0f01f259(order 0.24.0 ①·O-13)·9f4504ac(review 0.9.0 R4) push·LAN 배포(pc2 order·review, pc4 api-gateway), LAN 확인 통과. 고객앱 요청 `docs/handoff/clients/customer-app/2026-11-26-request-frequent-items.md`, 공용 표 O-13 LAN 배포. 남은 것은 앱(그쪽 세션)·백오피스 화면(PC 2).
 - 공통 정의: "산 것" = 확정 주문(customer_order) 중 CANCELLED·EXPIRED 아님, 출고 전 전부 취소된 줄(`quantity − cancelled_before_ship_qty = 0`) 제외. 횟수 = **서로 다른 주문 수**(한 주문에 2개 담은 것은 1번).
 
 | # | 무엇 | 어디 | 안 | 시간(대략) |

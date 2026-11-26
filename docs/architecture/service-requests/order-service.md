@@ -113,4 +113,4 @@
 - 고객 한 명 칸: 누적 구매액·구매 횟수·첫·마지막 구매일(O-12 와 같이 줘도 됨).
 - **계획(2026-11-26 PC 1, 사용자 "백오피스 재구매율까지 반영되게 하고 싶은데")**: 자주 산 상품(고객 본인 조회)·리뷰 재구매 표시와 같은 "산 것" 정의(확정 주문 중 취소·만료 아님, 서로 다른 주문 수)로 함께 만든다. 안·순서 `docs/operations/2026-11-26-pc1-session-handoff.md` §2-2.
 - **결정(2026-11-26 오후, 사용자 "그대로 해줘")**: 기간 기준 = **첫 구매 기준**(기간 안에 첫 구매를 한 고객 — 가입일은 쓰지 않음, order 가 모름), 횟수·금액은 기간 끝까지. 금액 = 줄 금액 − 할인 분담(남은 수량 비율, 배달팁·봉투 빼고·환불 안 뺌). 고객 한 명 칸은 O-12 때. API `GET /orders/metrics/customers`(계약 0.24.0).
-- **상태(2026-11-26)**: 구현·시험 통과(`PurchaseHistoryIT.customerMetricsUseFirstPurchaseCohort`) — 응답 `customerCount`(분모)·`repeatCustomerCount`·`oneTimeCustomerCount`·`orderCount`·`purchaseAmount`, 권한·mfcId 는 다른 주문 집계와 같고 기간 366일. LAN 배포 전.
+- **상태(2026-11-26)**: 구현·시험 통과(`PurchaseHistoryIT.customerMetricsUseFirstPurchaseCohort`) — 응답 `customerCount`(분모)·`repeatCustomerCount`·`oneTimeCustomerCount`·`orderCount`·`purchaseAmount`, 권한·mfcId 는 다른 주문 집계와 같고 기간 366일. **LAN 배포 2026-11-26**(9f4504ac pc2 order-service, pc4 api-gateway) — 11-01~26 고객 8·재구매 4 확인.
