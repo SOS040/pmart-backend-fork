@@ -40,4 +40,5 @@
 - 업로드 상한 300MB(pmart-config `pricing-service.yml` multipart).
 
 ## 상태
-가격 버전·승인 반영·발효·조회·견적 구현(2026-10-30). 기간 할인·장바구니 쿠폰 2026-11-21(ADR-0082). 오퍼·상품 쿠폰은 미구현.
+가격 버전·승인 반영·발효·조회·견적 구현(2026-10-30). 기간 할인·장바구니 쿠폰 2026-11-21(ADR-0082). 수량 행사 2026-11-26(ADR-0090, 아래). 상품 쿠폰은 미구현.
+- **수량 행사 1+1·2+1(2026-11-26 ADR-0090, 계약 0.4.0)**: 견적 품목 quantity = **유상 수량**. promotion `GET /internal/quantity-offers?skus=&at=`(`PromotionClient.offers`, 꺼져 있으면 빈 결과, 실패는 503 — 정가로 계산하지 않음)로 걸린 SKU 는 무료 수량 = `PriceRules.freeQuantity`(⌊유상 ÷ buy⌋ × free) → 줄 quantity = 총 수량, `paidQuantity`·`freeQuantity`·`offerPromotionId`·`offerName`·`offerBuyQuantity`·`offerFreeQuantity`, 줄 금액 = 기본가 × 총 수량, 무료분 = `promotionDiscount`. **그 SKU 는 기간 할인을 묻지 않는다**(A5 — price-discounts 요청에서 뺌). 쿠폰은 그 뒤 금액에 안분. 단계 `QUANTITY_OFFER`(기간 할인이 실제로 있을 때만 PROMOTION). 옛 견적 JSON 은 paidQuantity 0 → 응답에서 quantity 로. 시험 `QuoteDiscountIT.quantityOfferAddsFreeUnitsAndSkipsPeriodDiscount`(기본 stub 은 행사 없음).

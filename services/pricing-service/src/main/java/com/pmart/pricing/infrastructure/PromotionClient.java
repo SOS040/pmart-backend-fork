@@ -35,6 +35,9 @@ public class PromotionClient {
       int ratePercent,
       Instant endsAt) {}
 
+  /** 수량 행사(ADR-0090) — 유상 buy 개마다 free 개. */
+  public record Offer(String sku, String promotionId, String name, int buy, int free) {}
+
   public record CouponResult(
       String couponId,
       boolean applicable,
@@ -73,6 +76,41 @@ public class PromotionClient {
               i.path("sku").asString(),
               i.path("promotionId").asString(),
               i.path("unitDiscount").asLong()));
+    }
+    return out;
+  }
+
+  /** 수량 행사(ADR-0090, promotion 0.5.0) — 걸린 SKU 만. 꺼져 있으면 빈 결과, 실패는 예외(정가로 계산하지 않음). */
+  public Map<String, Offer> offers(java.util.Collection<String> skus, Instant at) {
+    Map<String, Offer> out = new HashMap<>();
+    if (promotion == null || skus.isEmpty()) {
+      return out;
+    }
+    RestClient c = Objects.requireNonNull(promotion);
+    String csv = String.join(",", new java.util.LinkedHashSet<>(skus));
+    String raw =
+        Downstream.call(
+            "promotion-service /internal/quantity-offers",
+            () ->
+                c.get()
+                    .uri(
+                        u ->
+                            u.path("/api/v1/internal/quantity-offers")
+                                .queryParam("skus", csv)
+                                .queryParam("at", at.toString())
+                                .build())
+                    .header("X-Source-System", "pricing-service")
+                    .retrieve()
+                    .body(String.class));
+    for (JsonNode i : mapper.readTree(raw == null ? "{}" : raw).path("items")) {
+      out.put(
+          i.path("sku").asString(),
+          new Offer(
+              i.path("sku").asString(),
+              i.path("promotionId").asString(),
+              i.path("name").asString(""),
+              i.path("buyQuantity").asInt(1),
+              i.path("freeQuantity").asInt(0)));
     }
     return out;
   }

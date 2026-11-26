@@ -78,6 +78,14 @@ public final class PriceRules {
   }
 
   /** 품목 금액 = 단가 × 수량. 넘치면 예외(계산을 조용히 틀리게 하지 않는다). */
+  /**
+   * 수량 행사 무료 수량(ADR-0090 A2) — 유상 수량의 buy 배수마다 free 개. promotion-service
+   * PromotionRules.freeQuantity 와 같은 식.
+   */
+  public static int freeQuantity(int buy, int free, int paidQuantity) {
+    return buy <= 0 || free <= 0 || paidQuantity <= 0 ? 0 : (paidQuantity / buy) * free;
+  }
+
   public static long lineAmount(long unitPrice, int quantity) {
     return Math.multiplyExact(unitPrice, (long) quantity);
   }

@@ -1,8 +1,11 @@
 openapi: 3.1.0
 info:
   title: pricing-service
-  version: 0.3.0
+  version: 0.4.0
   description: |
+    0.4.0(2026-11-26, ADR-0090 수량 행사 1+1·2+1): 견적 품목 `quantity` 는 **유상 수량**(고객이 고른 수). 그 SKU 에 수량 행사가 걸리면(promotion `/internal/quantity-offers`)
+      무료 수량 = ⌊유상 ÷ buy⌋ × free 를 더해, 줄 `quantity` = **총 수량**(유상 + 무료 — 재고·피킹은 이 수), `paidQuantity`·`freeQuantity` 따로, 줄 금액 = 기본가 × 총 수량,
+      무료분(기본가 × 무료 수량)을 `promotionDiscount` 로 뺀다. 수량 행사가 걸린 SKU 에는 기간 할인을 적용하지 않는다(A5). 쿠폰은 그 뒤 금액에 안분. 단계 `QUANTITY_OFFER`.
     0.3.0(2026-11-21, ADR-0082 4단계 할인가 표시): 표시용 가격 조회(`/prices`·`/prices/{sku}`)에 지금(또는 at) 기간 할인 `discount`
     (promotion-service 와 같은 계산 — 가장 큰 1개, 정률 원 미만 버림)와 `discountAvailable`. promotion 을 못 읽으면 정가만 + `discountAvailable=false`
     (표시용이라 거절하지 않는다 — 결제 금액은 견적이 정하고 그때는 503). 내부 `/internal/prices` 는 할인을 붙이지 않는다.
@@ -473,7 +476,13 @@ components:
         netAmount: { $ref: '_common.yaml#/components/schemas/Money' }
         promotionDiscount: { $ref: '_common.yaml#/components/schemas/Money', description: '0.2.0 — 기간 할인(개당 × 수량)' }
         couponShare: { $ref: '_common.yaml#/components/schemas/Money', description: '0.2.0 — 쿠폰 할인 안분' }
-        promotionId: { type: [string, 'null'], description: '0.2.0 — 걸린 기간 할인 행사' }
+        promotionId: { type: [string, 'null'], description: '0.2.0 — 걸린 기간 할인 행사(0.4.0: 무료 수량이 생긴 수량 행사도)' }
+        paidQuantity: { type: integer, x-added-in: '2026-11-26', description: '0.4.0 — 유상 수량(요청 quantity). quantity = paidQuantity + freeQuantity' }
+        freeQuantity: { type: integer, x-added-in: '2026-11-26', description: '0.4.0 — 수량 행사 무료 수량(없으면 0)' }
+        offerPromotionId: { type: [string, 'null'], x-added-in: '2026-11-26', description: '0.4.0 — 걸린 수량 행사(무료 수량이 아직 0 이어도 — "1개 더 담으면 1개 무료" 안내용)' }
+        offerName: { type: [string, 'null'], x-added-in: '2026-11-26' }
+        offerBuyQuantity: { type: integer, x-added-in: '2026-11-26', description: '0.4.0 — 수량 행사 N(없으면 0)' }
+        offerFreeQuantity: { type: integer, x-added-in: '2026-11-26', description: '0.4.0 — 수량 행사 M(없으면 0)' }
     Quote:
       type: object
       required: [quoteId, lines, itemAmount, calculatedAt]
@@ -502,8 +511,8 @@ components:
                 name: { type: [string, 'null'] }
         appliedStages:
           type: array
-          description: 적용된 계산 단계(BASE·PROMOTION·CART_COUPON)
-          items: { type: string, enum: [BASE, OFFER, PROMOTION, PRODUCT_COUPON, CART_COUPON] }
+          description: 적용된 계산 단계(BASE·QUANTITY_OFFER(0.4.0)·PROMOTION·CART_COUPON)
+          items: { type: string, enum: [BASE, OFFER, QUANTITY_OFFER, PROMOTION, PRODUCT_COUPON, CART_COUPON] }
         calculatedAt: { type: string, format: date-time }
     PriceImportBatch:
       type: object

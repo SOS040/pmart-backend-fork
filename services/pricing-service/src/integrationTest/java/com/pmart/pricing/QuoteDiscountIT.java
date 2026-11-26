@@ -73,6 +73,87 @@ class QuoteDiscountIT extends PostgresKafkaContainerSupport {
     price(A, 10_000);
     price(B, 3_000);
     promotion.resetAll();
+    // 0.4.0 ADR-0090 — 수량 행사 없음이 기본
+    stubOffers("{\"asOf\":\"2026-11-21T00:00:00Z\",\"items\":[]}");
+  }
+
+  void stubOffers(String json) {
+    promotion.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/internal/quantity-offers"))
+            .willReturn(aResponse().withHeader("Content-Type", "application/json").withBody(json)));
+  }
+
+  /**
+   * 0.4.0 수량 행사(ADR-0090): A 1+1 에 유상 2개 → 무료 2·총 4, 무료분 = 행사 할인, 기간 할인은 A 에 묻지도 않음(A5), 쿠폰은 낸
+   * 금액(23,000)으로. 2+1 에 1개면 무료 0 이지만 행사 정보는 실린다.
+   */
+  @Test
+  void quantityOfferAddsFreeUnitsAndSkipsPeriodDiscount() {
+    stubOffers(
+        """
+        {"asOf":"2026-11-26T00:00:00Z","items":[
+          {"sku":"%s","productId":"PRD-A","promotionId":"PRM-11","name":"A 1+1","buyQuantity":1,
+           "freeQuantity":1,"endsAt":"2026-12-01T00:00:00Z"}]}
+        """
+            .formatted(A));
+    stubDiscounts("{\"asOf\":\"2026-11-26T00:00:00Z\",\"items\":[]}");
+    promotion.stubFor(
+        WireMock.post(urlPathEqualTo("/api/v1/internal/coupon-quotes"))
+            .withRequestBody(
+                equalToJson("{\"couponId\":\"CPN-1\",\"itemAmount\":23000}", true, true))
+            .willReturn(
+                aResponse()
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(
+                        "{\"couponId\":\"CPN-1\",\"applicable\":true,\"discountAmount\":2300,\"promotionId\":\"PRM-C\",\"name\":\"쿠폰\"}")));
+    Res r = quote(body("CPN-1"));
+    assertThat(r.status()).as(r.body().toString()).isEqualTo(200);
+    JsonNode q = r.body();
+    JsonNode la = q.path("lines").path(0);
+    assertThat(la.path("quantity").asInt()).isEqualTo(4);
+    assertThat(la.path("paidQuantity").asInt()).isEqualTo(2);
+    assertThat(la.path("freeQuantity").asInt()).isEqualTo(2);
+    assertThat(la.path("lineAmount").asInt()).isEqualTo(40_000);
+    assertThat(la.path("promotionDiscount").asInt()).isEqualTo(20_000);
+    assertThat(la.path("offerPromotionId").asString()).isEqualTo("PRM-11");
+    assertThat(la.path("offerBuyQuantity").asInt()).isEqualTo(1);
+    assertThat(q.path("baseItemAmount").asInt()).isEqualTo(43_000);
+    assertThat(q.path("itemAmount").asInt()).as("무료분 뺀 낸 금액").isEqualTo(23_000);
+    assertThat(q.path("couponDiscount").asInt()).isEqualTo(2_300);
+    // 쿠폰 안분 20,000 : 3,000 → 2,000 / 300
+    assertThat(la.path("couponShare").asInt()).isEqualTo(2_000);
+    assertThat(la.path("netAmount").asInt()).isEqualTo(18_000);
+    assertThat(q.path("appliedStages").toString()).contains("QUANTITY_OFFER", "CART_COUPON");
+    assertThat(q.path("appliedStages").toString()).doesNotContain("\"PROMOTION\"");
+    JsonNode lb = q.path("lines").path(1);
+    assertThat(lb.path("freeQuantity").asInt()).isZero();
+    assertThat(lb.path("paidQuantity").asInt()).isEqualTo(1);
+    // 기간 할인 조회에는 B 만 갔다(A 는 수량 행사)
+    promotion.verify(
+        WireMock.postRequestedFor(urlPathEqualTo("/api/v1/internal/price-discounts"))
+            .withRequestBody(WireMock.notContaining(A)));
+
+    // 2+1 에 1개: 무료 0, 행사 정보는 그대로
+    stubOffers(
+        """
+        {"asOf":"2026-11-26T00:00:00Z","items":[
+          {"sku":"%s","promotionId":"PRM-21","name":"A 2+1","buyQuantity":2,"freeQuantity":1,
+           "endsAt":"2026-12-01T00:00:00Z"}]}
+        """
+            .formatted(A));
+    Res one =
+        quote(
+            Map.of(
+                "accountId",
+                "CU-1",
+                "items",
+                List.of(Map.of("lineRef", "l-a", "sku", A, "quantity", 1))));
+    JsonNode l1 = one.body().path("lines").path(0);
+    assertThat(l1.path("quantity").asInt()).isEqualTo(1);
+    assertThat(l1.path("freeQuantity").asInt()).isZero();
+    assertThat(l1.path("promotionDiscount").asInt()).isZero();
+    assertThat(l1.path("offerPromotionId").asString()).isEqualTo("PRM-21");
+    assertThat(l1.path("promotionId").isNull() || l1.path("promotionId").isMissingNode()).isTrue();
   }
 
   void price(String sku, long price) {

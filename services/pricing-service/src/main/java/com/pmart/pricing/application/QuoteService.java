@@ -42,7 +42,15 @@ public class QuoteService {
       // ADR-0082(0.2.0): 기간 할인(개당 × 수량)·쿠폰 안분·걸린 행사. 그 전 견적 JSON 은 0·null
       long promotionDiscount,
       long couponShare,
-      @Nullable String promotionId) {}
+      @Nullable String promotionId,
+      // ADR-0090(0.4.0): 수량 행사 — quantity = 총 수량(유상 + 무료), 무료분이 promotionDiscount. 그 전 견적 JSON 은
+      // 0·null
+      int paidQuantity,
+      int freeQuantity,
+      @Nullable String offerPromotionId,
+      @Nullable String offerName,
+      int offerBuyQuantity,
+      int offerFreeQuantity) {}
 
   /** 요청 쿠폰 결과(0.2.0). */
   public record CouponResult(
@@ -157,20 +165,32 @@ public class QuoteService {
     for (int k = 0; k < items.size(); k++) {
       unitPrices.put(items.get(k).sku(), chosen.get(k).basePrice());
     }
+    // 수량 행사(ADR-0090 A5): 걸린 SKU 는 기간 할인 없이 무료 수량만
+    Map<String, com.pmart.pricing.infrastructure.PromotionClient.Offer> offers =
+        promotion.offers(unitPrices.keySet(), priceAt);
+    Map<String, Long> discountable = new java.util.LinkedHashMap<>(unitPrices);
+    offers.keySet().forEach(discountable::remove);
     Map<String, com.pmart.pricing.infrastructure.PromotionClient.Discount> discounts =
-        promotion.discounts(unitPrices, priceAt);
+        promotion.discounts(discountable, priceAt);
     long baseItemAmount = 0;
     long promotionTotal = 0;
     long[] afterPromotion = new long[items.size()];
     long[] promoShare = new long[items.size()];
+    int[] freeQty = new int[items.size()];
     int maxVersion = 0;
     for (int k = 0; k < items.size(); k++) {
       QuoteItem i = items.get(k);
       PriceVersion v = chosen.get(k);
-      long amount = PriceRules.lineAmount(v.basePrice(), i.quantity());
+      var o = offers.get(i.sku());
+      freeQty[k] = o == null ? 0 : PriceRules.freeQuantity(o.buy(), o.free(), i.quantity());
+      long amount = PriceRules.lineAmount(v.basePrice(), i.quantity() + freeQty[k]);
       var d = discounts.get(i.sku());
       long promo =
-          d == null ? 0 : Math.min(amount, PriceRules.lineAmount(d.unitDiscount(), i.quantity()));
+          o != null
+              ? PriceRules.lineAmount(v.basePrice(), freeQty[k])
+              : d == null
+                  ? 0
+                  : Math.min(amount, PriceRules.lineAmount(d.unitDiscount(), i.quantity()));
       promoShare[k] = promo;
       afterPromotion[k] = amount - promo;
       baseItemAmount = Math.addExact(baseItemAmount, amount);
@@ -204,15 +224,17 @@ public class QuoteService {
     for (int k = 0; k < items.size(); k++) {
       QuoteItem i = items.get(k);
       PriceVersion v = chosen.get(k);
-      long amount = PriceRules.lineAmount(v.basePrice(), i.quantity());
+      int total = i.quantity() + freeQty[k];
+      long amount = PriceRules.lineAmount(v.basePrice(), total);
       long share = promoShare[k] + couponShare[k];
       couponTotal += couponShare[k];
       var d = discounts.get(i.sku());
+      var o = offers.get(i.sku());
       lines.add(
           new QuoteLine(
               i.lineRef(),
               i.sku(),
-              i.quantity(),
+              total,
               v.basePrice(),
               v.version(),
               amount,
@@ -220,10 +242,25 @@ public class QuoteService {
               amount - share,
               promoShare[k],
               couponShare[k],
-              d == null || promoShare[k] == 0 ? null : d.promotionId()));
+              o != null
+                  ? (freeQty[k] > 0 ? o.promotionId() : null)
+                  : (d == null || promoShare[k] == 0 ? null : d.promotionId()),
+              i.quantity(),
+              freeQty[k],
+              o == null ? null : o.promotionId(),
+              o == null ? null : o.name(),
+              o == null ? 0 : o.buy(),
+              o == null ? 0 : o.free()));
     }
     List<String> stages = new ArrayList<>(List.of("BASE"));
-    if (promotionTotal > 0) {
+    if (java.util.Arrays.stream(freeQty).anyMatch(f -> f > 0)) {
+      stages.add("QUANTITY_OFFER");
+    }
+    boolean periodDiscount = false;
+    for (int k = 0; k < items.size(); k++) {
+      periodDiscount |= promoShare[k] > 0 && !offers.containsKey(items.get(k).sku());
+    }
+    if (periodDiscount) {
       stages.add("PROMOTION");
     }
     if (couponTotal > 0) {
