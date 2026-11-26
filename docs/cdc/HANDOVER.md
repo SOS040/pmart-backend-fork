@@ -202,3 +202,4 @@ CDC WMS 작업을 이어 받는 세션·사람이 **처음 읽는 문서**입니
 - 2026-11-26: 결정 역할 고침 — cdc-inbound 0.2.1·cdc-quality 0.4.1 이 정본에 없는 `CDC_MANAGER` 대신 `CDC_SUPERVISOR`(staff-roles.md)를 본다(LAN claude-cdc-sup 이 403 이던 것). 다른 cdc 서비스 시험 토큰도 같게. PR `cdc/supervisor-role`.
 - 2026-11-26: 시뮬레이터 R-25(991c047, 층 재구성 — 5F 냉장·냉동, 6F·7F 상온) 위치 사본 43,958칸, cdc-location 0.7.1(6층 C 61~62 오토스토어 허용), 통로 방식 87통로. `ChilgokLayoutIT` 통과. PR `cdc/chilgok-locations-r25`. LAN 은 그대로(사용자 승인 뒤 위치 → 통로 방식 → 재고). 기타 센터 4곳 ID 는 시뮬레이터에 물음.
 - 2026-11-26: R-25 기타 센터 4곳(ETC-BUSAN·HONAM·CHUNGCHEONG·GANGWON, 91 자리 06~09)은 시뮬레이터 가상 묶음 목적지 — center-master·지역표·TMS 노선 등록은 사용자 결정 대기, 그때까지 실서버 TRF 없음.
+- 2026-11-26: **사용자 결정(시뮬레이터 세션 전달)** — 기타 센터 4곳은 center-master·지역표·TMS 노선에 등록하지 않음(목 모드 전용). **R-25 위치 43,958칸·통로 방식 87통로 LAN 넣기 승인** — 순서 #532 병합 → cdc-location 0.7.1 배포 → `cdc_locations.py --apply` → `cdc_pick_methods.py --apply`. ⚠ 넣기는 칸을 더하기만 한다 — LAN 의 옛 dd3d185 칸·그 칸의 시작 재고 정리 방법은 사용자 확인 필요(pc1-todo).
