@@ -775,8 +775,8 @@ public class CustomerSocialLoginService {
   }
 
   /**
-   * 카카오 ID 토큰에 이름·이메일·사진이 빠졌으면 카카오 사용자 API 에서 채운다(2026-11-25, 트랜잭션 밖 — 네트워크). 토큰 값이 있으면 그것이 우선. 사진은
-   * https·*.kakaocdn.net 만. 실패하면 토큰 그대로.
+   * 카카오 ID 토큰에 이름(BR-111 — 동의항목 "이름"이 있을 때만)·이메일·사진이 빠졌으면 카카오 사용자 API 에서 채운다(2026-11-25, 트랜잭션 밖 —
+   * 네트워크). 토큰 값이 있으면 그것이 우선. 사진은 https·*.kakaocdn.net 만. 실패하면 토큰 그대로.
    */
   private IdTokenVerifier.Identity withProviderProfile(
       String provider, IdTokenVerifier.Identity identity) {
@@ -784,7 +784,8 @@ public class CustomerSocialLoginService {
         || kakao == null
         || (identity.email() != null
             && identity.nickname() != null
-            && identity.pictureUrl() != null)) {
+            && identity.pictureUrl() != null
+            && identity.name() != null)) {
       return identity;
     }
     var p = kakao.profile(identity.subject());
@@ -796,8 +797,9 @@ public class CustomerSocialLoginService {
         identity.subject(),
         useEmail ? p.email() : identity.email(),
         useEmail ? p.emailVerified() : identity.emailVerified(),
-        // 카카오는 실명을 주지 않는다 — 닉네임은 이름 칸에 넣지 않는다(2026-11-25, 이름은 고객앱이 입력받음)
-        identity.name(),
+        // BR-111(2026-11-26): 실명은 동의항목 "이름"(kakao_account.name)이 있을 때만. 닉네임은 이름 칸에 넣지 않는다 —
+        // 없으면 비움(고객앱이 입력받음). 고객이 직접 넣은 이름은 customer 가 덮지 않는다(nameSource CUSTOMER, BR-107)
+        identity.name() != null ? identity.name() : p.name(),
         identity.pictureUrl() != null
             ? identity.pictureUrl()
             : com.pmart.auth.domain.ProviderPictureRules.kakao(p.imageUrl()),

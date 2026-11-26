@@ -53,7 +53,18 @@ public class KakaoUnlinkClient {
       @Nullable String email,
       @Nullable Boolean emailVerified,
       @Nullable String nickname,
-      @Nullable String imageUrl) {
+      @Nullable String imageUrl,
+      // BR-111(2026-11-26): 동의항목 "이름"(kakao_account.name) — 동의 안 했거나 없으면 null
+      @Nullable String name) {
+
+    public Profile(
+        @Nullable String email,
+        @Nullable Boolean emailVerified,
+        @Nullable String nickname,
+        @Nullable String imageUrl) {
+      this(email, emailVerified, nickname, imageUrl, null);
+    }
+
     @Override
     public String toString() {
       return "KakaoUnlinkClient.Profile[***]";
@@ -103,6 +114,11 @@ public class KakaoUnlinkClient {
     }
     var profile = account.path("profile");
     String nickname = profile.path("nickname").asString("").strip();
+    // BR-111: 실명(동의항목 "이름") — 네이버 이름과 같은 규칙(100자·제어 문자 없음), 아니면 버림
+    String name = account.path("name").asString("").strip();
+    if (name.length() > 100 || name.chars().anyMatch(Character::isISOControl)) {
+      name = "";
+    }
     String image =
         profile.path("is_default_image").asBoolean(false)
             ? ""
@@ -111,7 +127,8 @@ public class KakaoUnlinkClient {
         email == null || email.isEmpty() ? null : email,
         email == null || email.isEmpty() ? null : verified,
         nickname.isEmpty() ? null : nickname,
-        image.isEmpty() ? null : image);
+        image.isEmpty() ? null : image,
+        name.isEmpty() ? null : name);
   }
 
   public boolean configured() {

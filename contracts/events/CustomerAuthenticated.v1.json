@@ -45,7 +45,7 @@
             },
             "name": {
               "type": "string",
-              "description": "제공자 프로필 이름(실명만 — 카카오는 실명을 주지 않아 없음, 2026-11-25)"
+              "description": "제공자 프로필 이름(실명만 — 구글 name·네이버 이름, 카카오는 동의항목 \"이름\"(kakao_account.name)이 있을 때만 — BR-111 2026-11-26, 없으면 비움. 닉네임으로 채우지 않는다)"
             },
             "providerNickname": {
               "type": "string",

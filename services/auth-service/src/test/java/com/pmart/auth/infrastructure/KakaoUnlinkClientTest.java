@@ -82,6 +82,16 @@ class KakaoUnlinkClientTest {
       assertThat(p.emailVerified()).isTrue();
       assertThat(p.nickname()).isEqualTo("카카오");
       assertThat(p.imageUrl()).isEqualTo("https://k.kakaocdn.net/a.jpg");
+      assertThat(p.name()).as("이름 동의 없음").isNull();
+
+      // BR-111: 동의항목 "이름"이 있으면 실명, 제어 문자가 있으면 버림
+      reply.set(
+          "{\"id\":123,\"kakao_account\":{\"name\":\" 홍길동 \",\"profile\":{\"nickname\":\"길동이\"}}}");
+      var named = c.profile("123");
+      assertThat(named.name()).isEqualTo("홍길동");
+      assertThat(named.nickname()).isEqualTo("길동이");
+      reply.set("{\"id\":123,\"kakao_account\":{\"name\":\"홍\\n길동\"}}");
+      assertThat(c.profile("123").name()).isNull();
 
       // 확인 안 된 이메일·기본 사진·별명 없음 → 빠진다
       reply.set(
