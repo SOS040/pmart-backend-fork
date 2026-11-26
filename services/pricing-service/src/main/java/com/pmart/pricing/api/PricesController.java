@@ -30,7 +30,7 @@ public class PricesController implements PricesApi {
   public ResponseEntity<Price> getPrice(String sku, @Nullable OffsetDateTime at) {
     PriceQueries.CurrentPrice p = queries.price(sku, PricingMapping.instant(at));
     DisplayPrices.Shown s = display.withDiscounts(p, PricingMapping.instant(at));
-    return ResponseEntity.ok(PricingMapping.shown(p, s.discounts(), s.available()));
+    return ResponseEntity.ok(PricingMapping.shown(p, s.discounts(), s.available(), s.offers()));
   }
 
   @Override

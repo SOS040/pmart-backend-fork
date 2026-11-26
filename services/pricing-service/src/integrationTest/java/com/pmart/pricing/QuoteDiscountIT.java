@@ -280,6 +280,40 @@ class QuoteDiscountIT extends PostgresKafkaContainerSupport {
                 new Res(r.getStatusCode().value(), mapper.readTree(r.getBody().readAllBytes())));
   }
 
+  /** 0.4.1 표시(ADR-0090): 수량 행사가 걸린 SKU 는 quantityOffer 만 — 기간 할인은 싣지도 묻지도 않는다(A5). */
+  @Test
+  void displayPricesShowQuantityOfferInsteadOfPeriodDiscount() {
+    stubOffers(
+        """
+        {"asOf":"2026-11-26T00:00:00Z","items":[
+          {"sku":"%s","promotionId":"PRM-11","name":"A 1+1","buyQuantity":1,"freeQuantity":1,
+           "endsAt":"2026-12-01T00:00:00Z"}]}
+        """
+            .formatted(A));
+    stubDiscounts(
+        """
+        {"asOf":"2026-11-26T00:00:00Z","items":[
+          {"sku":"%s","promotionId":"PRM-B","name":"B 10%%","unitPrice":3000,"unitDiscount":300,
+           "discountedUnitPrice":2700,"ratePercent":10,"endsAt":"2026-12-01T00:00:00Z"}]}
+        """
+            .formatted(B));
+    Res list = get("/prices?skus=" + A + "," + B);
+    assertThat(list.status()).as(list.body().toString()).isEqualTo(200);
+    JsonNode a = list.body().path("items").path(0);
+    JsonNode b = list.body().path("items").path(1);
+    assertThat(a.path("quantityOffer").path("name").asString()).isEqualTo("A 1+1");
+    assertThat(a.path("quantityOffer").path("buyQuantity").asInt()).isEqualTo(1);
+    assertThat(a.path("discount").isMissingNode() || a.path("discount").isNull()).isTrue();
+    assertThat(b.path("discount").path("salePrice").asInt()).isEqualTo(2_700);
+    assertThat(b.path("quantityOffer").isMissingNode() || b.path("quantityOffer").isNull())
+        .isTrue();
+    promotion.verify(
+        WireMock.postRequestedFor(urlPathEqualTo("/api/v1/internal/price-discounts"))
+            .withRequestBody(WireMock.notContaining(A)));
+    assertThat(get("/prices/" + A).body().path("quantityOffer").path("freeQuantity").asInt())
+        .isEqualTo(1);
+  }
+
   @Test
   void displayPricesCarryTheCurrentDiscountAndFallBackToBasePrice() {
     stubDiscounts(

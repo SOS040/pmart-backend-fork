@@ -23,7 +23,17 @@ public class DisplayPrices {
 
   private static final Logger log = LoggerFactory.getLogger(DisplayPrices.class);
 
-  public record Shown(PriceList list, Map<String, DisplayDiscount> discounts, boolean available) {}
+  /** offers = 수량 행사(0.4.1 ADR-0090) — 걸린 SKU 는 discounts 에 없다(A5). */
+  public record Shown(
+      PriceList list,
+      Map<String, DisplayDiscount> discounts,
+      boolean available,
+      Map<String, PromotionClient.Offer> offers) {
+
+    public Shown(PriceList list, Map<String, DisplayDiscount> discounts, boolean available) {
+      this(list, discounts, available, Map.of());
+    }
+  }
 
   private final PromotionClient promotion;
   private final Clock clock;
@@ -46,7 +56,9 @@ public class DisplayPrices {
       prices.put(p.current().sku(), p.current().basePrice());
     }
     try {
-      return new Shown(list, promotion.displayDiscounts(prices, at), true);
+      Map<String, PromotionClient.Offer> offers = promotion.offers(prices.keySet(), at);
+      offers.keySet().forEach(prices::remove);
+      return new Shown(list, promotion.displayDiscounts(prices, at), true, offers);
     } catch (RuntimeException ex) {
       log.warn("표시 할인을 못 읽음 — 정가만 보임: {}", ex.toString());
       return new Shown(list, Map.of(), false);

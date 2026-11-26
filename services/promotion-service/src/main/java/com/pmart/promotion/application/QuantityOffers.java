@@ -87,6 +87,20 @@ public class QuantityOffers {
     return out;
   }
 
+  /** 수량 행사가 걸린 SKU(표시 할인 동기화가 기간 할인을 빼려고 — 개수 제한 없음). */
+  public Set<String> skusWithOffers(java.util.Collection<String> skus, Instant at) {
+    if (skus.isEmpty()) {
+      return Set.of();
+    }
+    Set<String> out = new java.util.HashSet<>();
+    List<String> all = new ArrayList<>(skus);
+    for (int i = 0; i < all.size(); i += MAX_SKUS) {
+      List<String> chunk = all.subList(i, Math.min(all.size(), i + MAX_SKUS));
+      lookup(String.join(",", chunk), at).forEach(r -> out.add(r.sku()));
+    }
+    return out;
+  }
+
   /** 진행 중 수량 행사 SKU(홈 "+1 하나더") — SKU 마다 1개, 끝이 빠른 순 → SKU, limit 개. */
   public List<Result> running(int limit) {
     Map<String, Result> bySku = new LinkedHashMap<>();

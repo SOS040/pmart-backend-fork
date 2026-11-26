@@ -41,6 +41,7 @@ public class DisplayDiscountSync {
   private final EventEnvelopeCodec codec;
   private final TransactionTemplate tx;
   private final Clock clock;
+  private final QuantityOffers offers;
 
   public DisplayDiscountSync(
       DisplayDiscountStore store,
@@ -48,7 +49,9 @@ public class DisplayDiscountSync {
       EventPublisher events,
       EventEnvelopeCodec codec,
       TransactionTemplate tx,
-      Clock clock) {
+      Clock clock,
+      QuantityOffers offers) {
+    this.offers = offers;
     this.store = store;
     this.discounts = discounts;
     this.events = events;
@@ -95,6 +98,8 @@ public class DisplayDiscountSync {
     prices.values().forEach(p -> items.add(new PriceDiscounts.Item(p.sku(), p.price())));
     Map<String, PriceDiscounts.Result> best = new LinkedHashMap<>();
     discounts.lookup(items, now).forEach(r -> best.put(r.sku(), r));
+    // ADR-0090 A5: 수량 행사가 걸린 SKU 는 결제 때 기간 할인이 빠진다 — 할인가로 보이지 않게(행사가 끝나면 다음 주기에 다시)
+    offers.skusWithOffers(prices.keySet(), now).forEach(best::remove);
     Map<String, Shown> shown = store.shownForUpdate(skus);
     int changed = 0;
     for (String sku : skus) {

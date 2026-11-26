@@ -395,6 +395,25 @@ class PromotionsIT extends PostgresKafkaContainerSupport {
     list.body().path("items").forEach(i -> listed.put(i.path("sku").asString(), i));
     assertThat(listed.get(skuA).path("promotionId").asString()).isEqualTo(oneOne);
     assertThat(listed.get(skuB).path("productId").asString()).isEqualTo(productB);
+
+    // 표시 할인(A5): 기간 할인으로 할인가가 보이던 SKU 에 1+1 이 걸리면 할인가 0 으로 다시 알린다
+    String skuD = randomSku();
+    priceEffective(skuD, 10_000, 1);
+    await(
+        () ->
+            jdbc.queryForObject(
+                "SELECT count(*) FROM sku_price WHERE sku = ?", Integer.class, skuD),
+        n -> n != null && n == 1);
+    approved(
+        priceDiscount(
+            "D 10%",
+            Map.of("type", "RATE", "value", 10), List.of(Map.of("type", "SKU", "id", skuD))));
+    List<JsonNode> d1 = await(() -> displayEvents(skuD), l -> !l.isEmpty());
+    assertThat(d1.get(0).path("unitDiscount").asLong()).isEqualTo(1_000);
+    approved(quantityOffer("D 1+1", 1, 1, List.of(Map.of("type", "SKU", "id", skuD))));
+    List<JsonNode> d2 = await(() -> displayEvents(skuD), l -> l.size() >= 2);
+    assertThat(d2.get(1).path("unitDiscount").asLong()).isZero();
+    assertThat(d2.get(1).path("salePrice").asLong()).isEqualTo(10_000);
   }
 
   @Test

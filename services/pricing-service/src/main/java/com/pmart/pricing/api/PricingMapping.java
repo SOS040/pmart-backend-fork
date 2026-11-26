@@ -44,7 +44,26 @@ final class PricingMapping {
       CurrentPrice p,
       java.util.Map<String, PromotionClient.DisplayDiscount> discounts,
       boolean ok) {
+    return shown(p, discounts, ok, java.util.Map.of());
+  }
+
+  /** 0.4.1 — 수량 행사도(ADR-0090). */
+  static Price shown(
+      CurrentPrice p,
+      java.util.Map<String, PromotionClient.DisplayDiscount> discounts,
+      boolean ok,
+      java.util.Map<String, PromotionClient.Offer> offers) {
     Price out = price(p).discountAvailable(ok);
+    PromotionClient.Offer o = offers.get(p.current().sku());
+    if (o != null) {
+      out.quantityOffer(
+          new com.pmart.pricing.api.generated.model.DisplayQuantityOffer()
+              .promotionId(o.promotionId())
+              .name(o.name())
+              .buyQuantity(o.buy())
+              .freeQuantity(o.free())
+              .endsAt(o.endsAt() == null ? null : odt(o.endsAt())));
+    }
     PromotionClient.DisplayDiscount d = discounts.get(p.current().sku());
     if (d != null && d.unitDiscount() > 0) {
       out.discount(
@@ -61,7 +80,10 @@ final class PricingMapping {
 
   static ListPrices200Response shownList(DisplayPrices.Shown s) {
     return priceList(s.list())
-        .items(s.list().items().stream().map(p -> shown(p, s.discounts(), s.available())).toList());
+        .items(
+            s.list().items().stream()
+                .map(p -> shown(p, s.discounts(), s.available(), s.offers()))
+                .toList());
   }
 
   static ListPrices200Response priceList(PriceList list) {

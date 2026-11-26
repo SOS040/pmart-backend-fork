@@ -36,7 +36,8 @@ public class PromotionClient {
       Instant endsAt) {}
 
   /** 수량 행사(ADR-0090) — 유상 buy 개마다 free 개. */
-  public record Offer(String sku, String promotionId, String name, int buy, int free) {}
+  public record Offer(
+      String sku, String promotionId, String name, int buy, int free, @Nullable Instant endsAt) {}
 
   public record CouponResult(
       String couponId,
@@ -110,7 +111,8 @@ public class PromotionClient {
               i.path("promotionId").asString(),
               i.path("name").asString(""),
               i.path("buyQuantity").asInt(1),
-              i.path("freeQuantity").asInt(0)));
+              i.path("freeQuantity").asInt(0),
+              i.hasNonNull("endsAt") ? Instant.parse(i.get("endsAt").asString()) : null));
     }
     return out;
   }

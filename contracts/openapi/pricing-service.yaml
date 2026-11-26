@@ -1,8 +1,10 @@
 openapi: 3.1.0
 info:
   title: pricing-service
-  version: 0.4.0
+  version: 0.4.1
   description: |
+    0.4.1(2026-11-26, ADR-0090 표시): 공개 `/prices`·`/prices/{sku}` 에 `quantityOffer`(지금 걸린 수량 행사 1+1·2+1 — 이름·buy·free·끝). 수량 행사가 걸린 SKU 는
+      `discount`(기간 할인)를 싣지 않는다 — 결제 때도 기간 할인이 빠지므로(A5). 장바구니·상품 상세 표시용이고, 무료 수량은 주문서 견적이 정한다.
     0.4.0(2026-11-26, ADR-0090 수량 행사 1+1·2+1): 견적 품목 `quantity` 는 **유상 수량**(고객이 고른 수). 그 SKU 에 수량 행사가 걸리면(promotion `/internal/quantity-offers`)
       무료 수량 = ⌊유상 ÷ buy⌋ × free 를 더해, 줄 `quantity` = **총 수량**(유상 + 무료 — 재고·피킹은 이 수), `paidQuantity`·`freeQuantity` 따로, 줄 금액 = 기본가 × 총 수량,
       무료분(기본가 × 무료 수량)을 `promotionDiscount` 로 뺀다. 수량 행사가 걸린 SKU 에는 기간 할인을 적용하지 않는다(A5). 쿠폰은 그 뒤 금액에 안분. 단계 `QUANTITY_OFFER`.
@@ -414,6 +416,7 @@ components:
         priceVersion: { type: integer }
         effectiveFrom: { type: string, format: date-time }
         discount: { $ref: '#/components/schemas/DisplayDiscount' }
+        quantityOffer: { $ref: '#/components/schemas/DisplayQuantityOffer' }
         discountAvailable:
           type: boolean
           description: '(0.3.0) false = promotion 을 읽지 못해 할인을 모름(정가만 보임). 내부 조회에는 없다'
@@ -434,6 +437,17 @@ components:
         salePrice: { $ref: '_common.yaml#/components/schemas/Money', description: 할인가 = basePrice − unitDiscount }
         ratePercent: { type: integer, description: '할인율(내림, %)' }
         endsAt: { type: string, format: date-time, description: 행사 끝(조기 종료 반영) }
+    DisplayQuantityOffer:
+      type: object
+      x-added-in: '2026-11-26'
+      description: '(0.4.1 ADR-0090) 화면 표시용 수량 행사 — 유상 buyQuantity 개마다 freeQuantity 개 더. 무료 수량·금액은 견적(주문서)이 정한다'
+      required: [promotionId, name, buyQuantity, freeQuantity, endsAt]
+      properties:
+        promotionId: { type: string }
+        name: { type: string }
+        buyQuantity: { type: integer }
+        freeQuantity: { type: integer }
+        endsAt: { type: string, format: date-time }
     PriceVersion:
       type: object
       properties:
