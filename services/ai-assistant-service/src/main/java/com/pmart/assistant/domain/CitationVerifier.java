@@ -38,7 +38,10 @@ public final class CitationVerifier {
 
   public record Result(boolean valid, List<Violation> violations) {}
 
-  /** 답 문장마다 근거 단위와의 최대 의미 유사도(같은 순서). 임베딩 장애는 예외로 — 호출자가 의존성 장애로 다룬다. */
+  /**
+   * 답 문장마다 근거 단위와의 최대 의미 유사도(같은 순서). 유사도를 잴 수 없으면(임베딩 장애 등) 예외를 던지지 않고 그 문장에 0 을 돌려준다 — 의미 검사 없이
+   * bigram 결과대로 판단한다(답 전체를 의존성 장애로 만들지 않는다).
+   */
   @FunctionalInterface
   public interface SentenceSimilarity {
     double[] best(List<String> sentences, List<String> evidenceUnits);

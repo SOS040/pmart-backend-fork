@@ -483,13 +483,16 @@ class PolicyQuestionFlowIT extends AssistantITBase {
     jdbc.update(
         "UPDATE chat_session SET last_asked_at = ?",
         Timestamp.from(now.minus(Duration.ofDays(40))));
-    jobs.purgeExpiredAnswers(); // 기간 미설정 → 지우지 않는다
-    assertThat(answers.findAllBySubject("op-1")).hasSize(2);
-    props.getAnswers().setRetention(Duration.ofDays(30));
+    // 보존 기간은 시험 사본 설정(14d)에 기대지 않고 이 시험에서 직접 정한다 — 끝나면 원래 값으로 돌린다
+    Duration configured = props.getAnswers().getRetention();
     try {
+      props.getAnswers().setRetention(null);
+      jobs.purgeExpiredAnswers(); // 기간 미설정 → 지우지 않는다
+      assertThat(answers.findAllBySubject("op-1")).hasSize(2);
+      props.getAnswers().setRetention(Duration.ofDays(30));
       jobs.purgeExpiredAnswers();
     } finally {
-      props.getAnswers().setRetention(null);
+      props.getAnswers().setRetention(configured);
     }
     assertThat(answers.findAllBySubject("op-1"))
         .extracting(AnswerStore.AnswerRow::answerId)

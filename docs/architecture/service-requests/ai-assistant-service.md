@@ -13,6 +13,7 @@
 - **웹의 질문**: ① 질문 원문 보존 기간 = 답변 보존 기간인가, ② 개인정보가 섞인 질문을 지우는 방법(본인 삭제 API)을 둘 계획이 있는가 — 있으면 화면에 "이 질문 지우기".
 - **받으면 웹은**: 탭 안 기억(`web/backoffice/src/features/assistant/askedQuestions.ts`)을 지우고 서버 `question` 만 쓴다.
 - **상태**: 결정됨(2026-11-19) — **PC 4 구현 차례**(`store-question` 켬, 보존 90일·답변과 같이, 본인 지우기 API). ADR-0036 "결정 필요 3"을 이 결정으로 고치는 것은 PC 4(서비스 주인)가 같은 PR 에서.
+  - **2026-11-26 PC 4**: 보존 기간은 **14일**(사용자 2026-11-26 "보존 기간을 14일로" — 위 1번의 90일 대신, ADR-0084 마지막 질문 기준, 질문 원문도 답변과 같이 지워짐). `PolicyQuestionFlowIT` 이 시험 사본 설정에 기대지 않게 고치고 시험 사본에 `retention: 14d`, ADR-0036 결정 필요 3 갱신. **남은 것**: PC 1 이 pmart-config `ai-assistant-service.yml`(정본)에 `pmart.assistant.answers.retention: 14d` 넣고 재시작. 본인 지우기 API(3번)는 아직 — 다음 PR.
 
 ## AI-2. 상품 영양·알레르기 질문을 정해진 문장으로 (2026-11-23, 보낸 영역 platform — PC 1)
 
