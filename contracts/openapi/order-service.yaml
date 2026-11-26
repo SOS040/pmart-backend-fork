@@ -1,8 +1,11 @@
 openapi: 3.1.0
 info:
   title: order-service
-  version: 0.23.0
+  version: 0.24.0
   description: |
+    0.24.0(2026-11-26, 구매 기록 활용 — 사용자 "1, 2로 할건데"·"그대로 해줘"): 고객 본인 자주 산 상품 `GET /orders/frequent-items`(① — 고객앱 검색창 빈칸 제안 ②도 이것),
+      직원 고객 구매 지표 `GET /orders/metrics/customers`(O-13 — 첫 구매 기준 고객 수·재구매·한 번만·주문 수·금액, 비율은 화면). 둘 다 같은 "산 것" 정의:
+      확정 주문 중 CANCELLED·EXPIRED 아님, 출고 전 전부 취소된 줄 제외, 횟수 = 서로 다른 주문 수. 검색 순위에는 넣지 않는다(product-search §15).
     0.23.0(2026-11-25, 클라이언트 BR-106 — 회원 주소록 상세 주소 선택, customer 0.20.0): 초안 막힘 `DETAIL_ADDRESS_REQUIRED` — 쇼핑 주소에 상세 주소가 없다.
       앱은 그 주소의 상세를 받아(`PATCH /me/addresses/{id}`) 초안을 다시 만든다. 순서는 SLOT 뒤·CONTACT_REQUIRED 앞.
     0.22.0(2026-11-25, 클라이언트 BR-96 홈 배달 안내 "최소주문 15,000원 · 30,000원부터 배달팁 0원 · 운영 시간"): `GET /delivery-options` 에
@@ -456,6 +459,59 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /orders/frequent-items:
+    get:
+      tags: [orders]
+      summary: 본인 자주 산 상품 (0.24.0 — 기본 최근 180일·2번 이상)
+      x-added-in: '2026-11-26'
+      description: |
+        고객 토큰만(그 밖 403). 본인 확정 주문 중 확정 시각이 지금부터 `windowDays` 일 안인 것에서 SKU 별로 **서로 다른 주문 수**(orderCount)를 세어 `minOrders` 이상만 준다.
+        "산 것" = 주문 상태가 CANCELLED·EXPIRED 아님, 줄의 남은 수량(주문 수량 − 출고 전 취소) > 0. 반품은 빼지 않는다. 숨긴 주문(`hides`)은 세지 않는다.
+        정렬: orderCount 내림차순 → lastPurchasedAt 내림차순 → sku. totalQuantity = 남은 수량 합.
+        productName·optionLabel 은 가장 최근 주문의 주문 당시 사본(없으면 null), imageUrl 은 상품 대표 사진(product-content, 못 가져오면 null).
+      operationId: listFrequentItems
+      x-pmart-user-types: [CUSTOMER]
+      parameters:
+        - { name: windowDays, in: query, schema: { type: integer, minimum: 1, maximum: 365, default: 180 } }
+        - { name: minOrders, in: query, schema: { type: integer, minimum: 1, maximum: 10, default: 2 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FrequentItems' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /orders/metrics/customers:
+    get:
+      tags: [order-metrics]
+      summary: 고객 구매 지표 — 첫 구매 기준 재구매·한 번만 (0.24.0, O-13)
+      x-added-in: '2026-11-26'
+      description: |
+        권한은 `summary` 와 같다(OPERATOR_ADMIN 모든 센터 또는 그 센터 MFC_SUPERVISOR — mfcId 필수). 기간 from·to(Asia/Seoul, 포함) 366일 이하.
+        **첫 구매 기준(2026-11-26 사용자 결정)**: 첫 "산" 주문의 확정 시각이 기간 안인 고객만 센다. 그 고객의 주문은 첫 구매부터 **기간 끝까지** 센다.
+        mfcId 를 주면 그 센터 주문만으로 첫 구매·횟수·금액을 센다.
+        "산 것" = CANCELLED·EXPIRED 아닌 확정 주문 중 남은 수량(주문 수량 − 출고 전 취소)이 있는 줄이 하나 이상인 주문.
+        customerCount = 고객 수(분모), repeatCustomerCount = 주문 2건 이상, oneTimeCustomerCount = 1건만(이탈 — 2026-11-23 "한 번 사고 다시는 안 산 고객"),
+        orderCount = 그 고객들의 주문 수 합(평균 구매 횟수 = orderCount ÷ customerCount), purchaseAmount = Σ 줄마다 (줄 금액 − 할인 분담) × 남은 수량 ÷ 주문 수량(top-products 산식, 배달팁·봉투 빼고, 환불 빼지 않음).
+        비율은 화면이 계산한다(BO-28). 개인정보 없음.
+      operationId: getCustomerPurchaseMetrics
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - $ref: '#/components/parameters/MetricsFrom'
+        - { name: to, in: query, required: true, schema: { type: string, format: date }, description: '끝 날짜(Asia/Seoul, 포함). 366일 이하' }
+        - { name: mfcId, in: query, schema: { type: string, maxLength: 40 }, description: '센터 하나만(없으면 모든 센터 — OPERATOR_ADMIN 만). MFC_SUPERVISOR 는 필수' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CustomerPurchaseMetrics' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
   /orders/metrics/summary:
     get:
@@ -1323,6 +1379,41 @@ components:
               count: { type: integer }
         approvedAmount: { type: integer, format: int64, minimum: 0, description: 결제 승인 금액 합(정수 KRW) — 환불을 빼지 않음 }
         approvedOrderCount: { type: integer, description: 승인 금액을 더한 주문 수(= orderCount) }
+    FrequentItems:
+      type: object
+      x-added-in: '2026-11-26'
+      description: 본인 자주 산 상품(0.24.0)
+      required: [from, items]
+      properties:
+        from: { type: string, format: date-time, description: '센 기간 시작(지금 − windowDays)' }
+        items:
+          type: array
+          items:
+            type: object
+            required: [sku, orderCount, totalQuantity, lastPurchasedAt]
+            properties:
+              sku: { type: string }
+              productId: { type: [string, 'null'] }
+              productName: { type: [string, 'null'], description: 가장 최근 주문의 주문 당시 상품명 사본 }
+              optionLabel: { type: [string, 'null'] }
+              orderCount: { type: integer, minimum: 1, description: 서로 다른 주문 수 }
+              totalQuantity: { type: integer, minimum: 1, description: Σ(주문 수량 − 출고 전 취소) }
+              lastPurchasedAt: { type: string, format: date-time, description: 가장 최근 주문의 확정 시각 }
+              imageUrl: { type: [string, 'null'] }
+    CustomerPurchaseMetrics:
+      type: object
+      x-added-in: '2026-11-26'
+      description: 첫 구매 기준 고객 구매 지표(O-13, 0.24.0) — 분자·분모만, 비율은 화면
+      required: [from, to, customerCount, repeatCustomerCount, oneTimeCustomerCount, orderCount, purchaseAmount]
+      properties:
+        from: { type: string, format: date }
+        to: { type: string, format: date }
+        mfcId: { type: [string, 'null'] }
+        customerCount: { type: integer, minimum: 0 }
+        repeatCustomerCount: { type: integer, minimum: 0 }
+        oneTimeCustomerCount: { type: integer, minimum: 0 }
+        orderCount: { type: integer, minimum: 0 }
+        purchaseAmount: { type: integer, format: int64, minimum: 0 }
     OrderTopProductMetrics:
       type: object
       x-added-in: '2026-11-18'

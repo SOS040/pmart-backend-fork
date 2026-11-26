@@ -21,9 +21,29 @@ import org.springframework.web.bind.annotation.RestController;
 public class OrderMetricsController implements OrderMetricsApi {
 
   private final OrderMetricsService service;
+  private final com.pmart.order.application.PurchaseHistoryService purchases;
 
-  public OrderMetricsController(OrderMetricsService service) {
+  public OrderMetricsController(
+      OrderMetricsService service, com.pmart.order.application.PurchaseHistoryService purchases) {
     this.service = service;
+    this.purchases = purchases;
+  }
+
+  /** 0.24.0 O-13 고객 구매 지표(첫 구매 기준) — 분자·분모만. */
+  @Override
+  public ResponseEntity<com.pmart.order.api.generated.model.CustomerPurchaseMetrics>
+      getCustomerPurchaseMetrics(LocalDate from, LocalDate to, @Nullable String mfcId) {
+    var c = purchases.customerMetrics(from, to, mfcId);
+    return ResponseEntity.ok(
+        new com.pmart.order.api.generated.model.CustomerPurchaseMetrics()
+            .from(from)
+            .to(to)
+            .mfcId(blankToNull(mfcId))
+            .customerCount(c.customerCount())
+            .repeatCustomerCount(c.repeatCustomerCount())
+            .oneTimeCustomerCount(c.oneTimeCustomerCount())
+            .orderCount(c.orderCount())
+            .purchaseAmount(c.purchaseAmount()));
   }
 
   @Override

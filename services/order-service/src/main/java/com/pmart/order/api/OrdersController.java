@@ -43,18 +43,46 @@ public class OrdersController implements OrdersApi {
   private final Clock clock;
   private final com.pmart.order.application.DeliveryLinks deliveries;
   private final com.pmart.order.application.CenterNames centerNames;
+  private final com.pmart.order.application.PurchaseHistoryService purchases;
 
   public OrdersController(
       OrderService orders,
       com.pmart.order.application.TimeChangeService timeChanges,
       Clock clock,
       com.pmart.order.application.DeliveryLinks deliveries,
-      com.pmart.order.application.CenterNames centerNames) {
+      com.pmart.order.application.CenterNames centerNames,
+      com.pmart.order.application.PurchaseHistoryService purchases) {
+    this.purchases = purchases;
     this.orders = orders;
     this.timeChanges = timeChanges;
     this.clock = clock;
     this.deliveries = deliveries;
     this.centerNames = centerNames;
+  }
+
+  /** 0.24.0 본인 자주 산 상품(①·②) — 규칙·권한은 {@code PurchaseHistoryService}. */
+  @Override
+  public ResponseEntity<com.pmart.order.api.generated.model.FrequentItems> listFrequentItems(
+      Integer windowDays, Integer minOrders, Integer limit) {
+    var f = purchases.frequentItems(windowDays, minOrders, limit);
+    return ResponseEntity.ok(
+        new com.pmart.order.api.generated.model.FrequentItems()
+            .from(time(f.from()))
+            .items(
+                f.rows().stream()
+                    .map(
+                        r ->
+                            new com.pmart.order.api.generated.model.FrequentItemsItemsInner()
+                                .sku(r.sku())
+                                .productId(r.productId())
+                                .productName(r.productName())
+                                .optionLabel(r.optionLabel())
+                                .orderCount(r.orderCount())
+                                .totalQuantity(r.totalQuantity())
+                                .lastPurchasedAt(time(r.lastPurchasedAt()))
+                                .imageUrl(
+                                    r.productId() == null ? null : f.images().get(r.productId())))
+                    .toList()));
   }
 
   /** S4 예약 시간 변경 요청(202 — 접수, 결과는 조회). */

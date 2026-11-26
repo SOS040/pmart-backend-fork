@@ -126,8 +126,11 @@ public class OrderMetricsService {
     return OrderMetricsRules.range(from, to);
   }
 
-  /** 0.20.0 O-11: OPERATOR_ADMIN 모든 센터, MFC_SUPERVISOR 는 mfcId 필수·토큰 센터만. */
-  private static void access(@Nullable String mfcId) {
+  /**
+   * 0.20.0 O-11: OPERATOR_ADMIN 모든 센터, MFC_SUPERVISOR 는 mfcId 필수·토큰 센터만. 0.24.0 고객 구매 지표({@link
+   * PurchaseHistoryService})도 같이 쓴다.
+   */
+  static void access(@Nullable String mfcId) {
     PmartPrincipal p =
         PmartPrincipal.current()
             .filter(x -> x.type() == PmartPrincipal.PrincipalType.OPERATOR)
