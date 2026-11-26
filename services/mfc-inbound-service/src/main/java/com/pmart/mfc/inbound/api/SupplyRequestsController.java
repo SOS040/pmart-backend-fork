@@ -7,6 +7,7 @@ import com.pmart.mfc.inbound.api.generated.model.RejectSupplyRequestRequest;
 import com.pmart.mfc.inbound.api.generated.model.SupplyRecommendation;
 import com.pmart.mfc.inbound.api.generated.model.SupplyRequest;
 import com.pmart.mfc.inbound.api.generated.model.SupplyRequestAllOfApprovedLines;
+import com.pmart.mfc.inbound.api.generated.model.SupplyRequestAllOfTransfers;
 import com.pmart.mfc.inbound.api.generated.model.SupplyRequestBody;
 import com.pmart.mfc.inbound.api.generated.model.SupplyRequestBodyLinesInner;
 import com.pmart.mfc.inbound.api.generated.model.SupplyRequestState;
@@ -37,10 +38,14 @@ public class SupplyRequestsController implements SupplyRequestsApi {
 
   private final SupplyRecommendations recommendations;
 
+  private final com.pmart.mfc.inbound.application.AutoSupply autoSupply;
+
   public SupplyRequestsController(
       SupplyRequestService service,
       com.pmart.mfc.inbound.application.InboundLists lists,
-      SupplyRecommendations recommendations) {
+      SupplyRecommendations recommendations,
+      com.pmart.mfc.inbound.application.AutoSupply autoSupply) {
+    this.autoSupply = autoSupply;
     this.recommendations = recommendations;
     this.lists = lists;
     this.service = service;
@@ -125,14 +130,18 @@ public class SupplyRequestsController implements SupplyRequestsApi {
             : body.getLines().stream()
                 .map(l -> new SupplyRequestService.Line(l.getSku(), l.getApprovedQty()))
                 .toList();
-    return ResponseEntity.ok(
-        dto(
-            service.approve(
-                idempotencyKey,
-                xSourceSystem,
-                supplyRequestId,
-                xExpectedVersion,
-                new SupplyRequestService.Approval(lines, body.getNote()))));
+    var approved =
+        service.approve(
+            idempotencyKey,
+            xSourceSystem,
+            supplyRequestId,
+            xExpectedVersion,
+            new SupplyRequestService.Approval(lines, body.getNote()));
+    if (approved.transferCdcId() != null && approved.transferSentAt() == null) {
+      autoSupply.send(supplyRequestId); // ADR-0091 — 바로 DC 에(실패하면 주기 작업이 다시)
+      approved = service.findRow(supplyRequestId).orElse(approved);
+    }
+    return ResponseEntity.ok(dto(approved));
   }
 
   @Override
@@ -251,6 +260,38 @@ public class SupplyRequestsController implements SupplyRequestsApi {
     out.setDecisionNote(r.decisionNote());
     out.setRejectReason(r.rejectReason());
     out.setLinkedReceiptId(r.linkedReceiptId());
+    out.setTransferCdcId(r.transferCdcId());
+    out.setTransferDueAt(r.transferDueAt() == null ? null : odt(r.transferDueAt()));
+    out.setTransferSentAt(r.transferSentAt() == null ? null : odt(r.transferSentAt()));
+    out.setTransferError(r.transferError());
+    out.setTransfers(
+        r.transfers().stream()
+            .map(
+                t -> {
+                  var x = new SupplyRequestAllOfTransfers();
+                  x.setTrfId(t.trfId());
+                  x.setTemperatureZone(
+                      SupplyRequestAllOfTransfers.TemperatureZoneEnum.fromValue(
+                          t.temperatureZone()));
+                  x.setCdcId(t.cdcId());
+                  x.setDueAt(odt(t.dueAt()));
+                  x.setSentAt(t.sentAt() == null ? null : odt(t.sentAt()));
+                  x.setError(t.error());
+                  x.setLines(
+                      t.lines().entrySet().stream()
+                          .map(
+                              e -> {
+                                var l =
+                                    new com.pmart.mfc.inbound.api.generated.model
+                                        .SupplyRequestAllOfLines();
+                                l.setSku(e.getKey());
+                                l.setQty(e.getValue());
+                                return l;
+                              })
+                          .toList());
+                  return x;
+                })
+            .toList());
     return out;
   }
 

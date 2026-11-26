@@ -292,6 +292,28 @@ public class InboundPromises {
     touch(x, e);
   }
 
+  /**
+   * (ADR-0091) 승인된 센터 발주가 보급 DC 에 보낸 이관(TRF)의 입고 예정 — cdc-outbound 에 보낸 값과 같게(버전 1, READY 기한 —
+   * R-27). 호출자 트랜잭션 안. 이미 있으면 그대로(같은 TRF 를 두 번 만들지 않는다).
+   */
+  public void expectFromSupply(
+      String trfId, String mfcId, String fromCdc, Map<String, Integer> lines, Instant dueAt) {
+    if (store.lock(trfId).isPresent()) {
+      return;
+    }
+    Promise x = fresh(trfId, mfcId);
+    x.trfVersion = 1L;
+    x.fromCdc = fromCdc;
+    List<ApprovedLine> approved = new ArrayList<>();
+    lines.forEach((sku, qty) -> approved.add(new ApprovedLine(sku, qty, "E")));
+    x.approvedLines = approved;
+    x.deadlineMeaning = "READY";
+    x.dueAt = dueAt;
+    x.sources.put("mfc-inbound-service", clock.instant().toString());
+    touch(x, null);
+    log.info("입고 예정 {} ← 센터 발주 이관 요청 {} ({}줄)", trfId, fromCdc, approved.size());
+  }
+
   private Promise fresh(String trfId, String mfcId) {
     Promise x = new Promise();
     x.trfId = trfId;

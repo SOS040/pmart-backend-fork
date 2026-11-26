@@ -70,6 +70,11 @@ public class SupplyRecommendations {
 
   public View recommend(String mfcId, @Nullable String storageType, List<String> skuList) {
     InboundTaskService.requireOperator(mfcId);
+    return compute(mfcId, storageType, skuList);
+  }
+
+  /** 권한 검사 없는 계산(자동 발주 초안 AutoSupply — ADR-0091). */
+  View compute(String mfcId, @Nullable String storageType, List<String> skuList) {
     List<String> skus = List.copyOf(new LinkedHashSet<>(skuList == null ? List.of() : skuList));
     if (skus.isEmpty() || skus.size() > MAX_SKUS) {
       throw new PmartException(ErrorCode.VALIDATION_FAILED, "SKU 는 1~" + MAX_SKUS + "개입니다.");

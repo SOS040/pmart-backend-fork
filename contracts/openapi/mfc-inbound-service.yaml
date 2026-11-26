@@ -1,10 +1,16 @@
 openapi: 3.1.0
 info:
   title: mfc-inbound-service
-  version: 0.22.0
+  version: 0.23.0
   description: |
     MFC 입고 작업(RECEIVE/INSPECT/PUTAWAY Task)·InboundPromise(TRF·TOUT·ETA 투영)·수령 사실·수령 차이·회수품 반입·로컬 공급 요청(WK-14)의 정본. (docs/architecture/service-map.md §5)
     비정본: 수량(mfc-inventory에 ConfirmReceipt 요청 후 commitId 수신), 수령창·수용량(mfc-capacity), 품질 판정(mfc-quality), 공급 승인(replenishment).
+    (0.23.0, 2026-11-26 ADR-0091 — 사용자 "자동보충 만들어" → "추천 자동 발주 + 승인") ① 자동 발주 초안: 매일(06:00 Asia/Seoul, `pmart.inbound.auto-supply-enabled`) 센터마다
+      최근 28일에 판 SKU 의 발주 추천 수량으로 공급 요청 SUBMITTED(`submittedBy` SYSTEM, `recommendationRef` AUTO-<센터>-<날짜>, 하루 한 번, 미해결 요청 SKU 는 뺌). 시험·수동 실행 `POST /internal/auto-supply-runs`.
+      ② (R-27, DC 시뮬레이터 2026-11-26) 승인(그대로 센터 관리자)되면 보급 DC(`pmart.inbound.supplying-cdc`)가 정해진 경우 MFC 초기 입고(RCV-SR)를 만들지 않고 이관(TRF) 요청을
+      cdc-outbound `/internal/transfer-intakes` 로 보내고(trfVersion 1, approvalRef = 요청 ID, deadlineMeaning READY, dueAt = requestedReadyAt — 지났으면 승인 + 1일,
+      conditions TEMPERATURE_ZONE) 입고 예정(EXPECTED, fromCdc)을 바로 만든다. **온도대(mfc-inventory SKU 사본 storageType)가 섞이면 TRF 를 온도대마다 나눈다**
+      (`transfers`, 모르는 SKU 가 있으면 승인 422 `STORAGE_TYPE_UNKNOWN`, SKU 사본 조회 실패는 503). 보급 DC 가 없으면 예전처럼 `linkedReceiptId`(initial_stock_load).
     (0.22.0, 2026-11-26 요청 MI-5 — 사용자 "구현해"·"전부 여기서") CDC 이관 입고 종결 — 재고 반영(TIN_POSTED)이면 자동 종결(수령은 TRF 하나에 한 번), 오지 않은 이관은 센터 관리자
       `POST /inbound-promises/{trfId}/closures`(→ CLOSED). 종결은 cdc-inventory `POST /internal/transit-closures` 로 알린다(트랜잭션 밖·재시도). 예정 응답 `closure`.
     InboundPromise: EXPECTED→RECEIVING→TIN_POSTED (0.22.0 EXPECTED·RECEIVING→CLOSED 관리자 종결). SupplyRequest(로컬): DRAFT→SUBMITTED→ACKNOWLEDGED / WITHDRAWN, (0.21.0) SUBMITTED→APPROVED / REJECTED(센터 관리자).
@@ -398,6 +404,16 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '422':
+          description: (0.23.0, R-27) STORAGE_TYPE_UNKNOWN — 보급 DC 이관인데 보관 온도대를 모르는 SKU 가 있음(TRF 를 온도대별로 나눌 수 없음)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '503':
+          description: (0.23.0) mfc-inventory SKU 사본 조회 실패(온도대를 알 수 없음) — 다시 시도
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /supply-requests/{supplyRequestId}/rejections:
     post:
@@ -658,6 +674,33 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /internal/auto-supply-runs:
+    post:
+      tags: [internal]
+      summary: '[서비스·시험] (0.23.0, ADR-0091) 자동 발주 초안 바로 실행'
+      description: |
+        매일 06:00 주기 작업과 같은 일을 지금 한다(꺼져 있어도 실행). `mfcId` 를 주면 그 센터만, 비우면 인계 실적이 있는 모든 센터.
+        센터·날짜마다 한 번이라 같은 날 다시 부르면 만들지 않는다. 응답 = 이번에 만든 공급 요청 ID.
+      operationId: runAutoSupply
+      x-added-in: '2026-11-26'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                mfcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+      responses:
+        '200':
+          description: 만든 요청
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  supplyRequestIds: { type: array, items: { type: string } }
 
   /internal/initial-stock-loads/{receiptId}:
     get:
@@ -1671,7 +1714,7 @@ components:
             submittedBy: { type: string }
             submittedAt: { type: string, format: date-time }
             acknowledgedAt: { type: [string, 'null'], format: date-time }
-            linkedTrfId: { type: [string, 'null'], description: replenishment 승인 후 연결 }
+            linkedTrfId: { type: [string, 'null'], description: 'replenishment 승인 후 연결. (0.23.0) 보급 DC 이관이면 첫 TRF(온도대가 나뉘면 transfers 전체)' }
             approvedLines:
               type: array
               description: (0.21.0) 승인된 요청만 — 줄마다 요청·승인 수량(승인 0 이면 입고 예정에 없음)
@@ -1687,6 +1730,33 @@ components:
             decisionNote: { type: [string, 'null'], description: (0.21.0) 승인 메모(부분 승인 사유) }
             rejectReason: { type: [string, 'null'], description: (0.21.0) 거절 사유 }
             linkedReceiptId: { type: [string, 'null'], description: '(0.21.0) 승인이 만든 입고 예정 receiptId(GET /initial-stock-loads?approvalId= 이 요청 ID)' }
+            transferCdcId: { type: [string, 'null'], description: '(0.23.0, ADR-0091) 승인 뒤 이관을 요청한 보급 DC — 있으면 linkedTrfId 가 입고 예정(/inbound-promises/{trfId})' }
+            transferDueAt: { type: [string, 'null'], format: date-time, description: (0.23.0) 이관 도착 기한 }
+            transferSentAt: { type: [string, 'null'], format: date-time, description: '(0.23.0) DC 가 이관 요청을 받은 시각 — null 이면 보내는 중(transferError 에 마지막 실패)' }
+            transferError: { type: [string, 'null'], description: '(0.23.0) 아직 못 보낸 TRF 의 첫 실패(`<trfId>: <사유>`)' }
+            transfers:
+              type: array
+              description: |
+                (0.23.0, R-27) 승인이 만든 이관(TRF) — 온도대마다 하나(cdc-outbound 인수 조건 TEMPERATURE_ZONE 은 하나뿐). 온도대가 하나면 trfId `TRF-<요청 ID>`,
+                여럿이면 `TRF-<요청 ID>-<AMBIENT|CHILLED|FROZEN>`. 각 TRF 는 같은 trfId 의 입고 예정(/inbound-promises/{trfId}). 보급 DC 가 없으면 빈 배열.
+              items:
+                type: object
+                required: [trfId, temperatureZone, cdcId, dueAt, lines]
+                properties:
+                  trfId: { type: string }
+                  temperatureZone: { type: string, enum: [AMBIENT, CHILLED, FROZEN] }
+                  cdcId: { type: string }
+                  dueAt: { type: string, format: date-time, description: '희망 사용준비 시각(deadlineMeaning READY) — 이미 지났으면 승인 + supply-due-after' }
+                  sentAt: { type: [string, 'null'], format: date-time, description: DC 가 받은 시각(null = 보내는 중) }
+                  error: { type: [string, 'null'], description: 마지막 실패 }
+                  lines:
+                    type: array
+                    items:
+                      type: object
+                      required: [sku, qty]
+                      properties:
+                        sku: { type: string }
+                        qty: { type: integer }
     SupplyRecommendations:
       type: object
       required: [mfcId, calculatedAt, salesThrough, items]

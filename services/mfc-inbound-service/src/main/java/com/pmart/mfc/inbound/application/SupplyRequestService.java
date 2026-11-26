@@ -9,17 +9,20 @@ import com.pmart.common.security.PmartPrincipal;
 import com.pmart.common.web.ErrorCode;
 import com.pmart.common.web.PmartException;
 import com.pmart.mfc.inbound.infrastructure.InitialStockStore;
+import com.pmart.mfc.inbound.infrastructure.InventorySkuClient;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import org.jspecify.annotations.Nullable;
@@ -52,6 +55,8 @@ public class SupplyRequestService {
   private static final Logger log = LoggerFactory.getLogger(SupplyRequestService.class);
   private static final TypeReference<List<Line>> LINES = new TypeReference<>() {};
   private static final TypeReference<List<ApprovedLine>> APPROVED_LINES = new TypeReference<>() {};
+  private static final TypeReference<LinkedHashMap<String, Integer>> ZONE_LINES =
+      new TypeReference<>() {};
 
   public record Line(String sku, int qty) {}
 
@@ -91,7 +96,49 @@ public class SupplyRequestService {
       @Nullable Instant decidedAt,
       @Nullable String decisionNote,
       @Nullable String rejectReason,
-      @Nullable String linkedReceiptId) {}
+      @Nullable String linkedReceiptId,
+      @Nullable String transferCdcId,
+      List<Transfer> transfers) {
+
+    /** (0.23.0) 첫 TRF 기한(온도대가 나뉘어도 같은 기한). */
+    public @Nullable Instant transferDueAt() {
+      return transfers.isEmpty() ? null : transfers.getFirst().dueAt();
+    }
+
+    /** (0.23.0) 모든 TRF 를 DC 가 받았으면 마지막으로 받은 시각, 아직 남았으면 null. */
+    public @Nullable Instant transferSentAt() {
+      if (transfers.isEmpty() || transfers.stream().anyMatch(t -> t.sentAt() == null)) {
+        return null;
+      }
+      return transfers.stream().map(Transfer::sentAt).max(Instant::compareTo).orElse(null);
+    }
+
+    /** (0.23.0) 아직 못 보낸 TRF 의 첫 실패. */
+    public @Nullable String transferError() {
+      return transfers.stream()
+          .filter(t -> t.sentAt() == null && t.error() != null)
+          .map(t -> t.trfId() + ": " + t.error())
+          .findFirst()
+          .orElse(null);
+    }
+  }
+
+  /**
+   * (0.23.0, ADR-0091·R-27) 승인이 만든 이관(TRF) 하나 — 온도대마다 하나(cdc-outbound 인수 조건 TEMPERATURE_ZONE 은
+   * 하나뿐). lines = SKU → 승인 수량.
+   */
+  public record Transfer(
+      String trfId,
+      String temperatureZone,
+      String cdcId,
+      Map<String, Integer> lines,
+      Instant dueAt,
+      @Nullable Instant sentAt,
+      int attempts,
+      @Nullable String error) {}
+
+  /** 온도대 순서(TRF 번호 꼬리). */
+  static final List<String> ZONES = List.of("AMBIENT", "CHILLED", "FROZEN");
 
   private final JdbcTemplate jdbc;
   private final EventPublisher events;
@@ -100,6 +147,9 @@ public class SupplyRequestService {
   private final ObjectMapper mapper;
   private final Clock clock;
   private final InitialStockStore loads;
+  private final InboundPromises promises;
+  private final InboundProperties props;
+  private final InventorySkuClient skuClient;
 
   public SupplyRequestService(
       JdbcTemplate jdbc,
@@ -108,8 +158,14 @@ public class SupplyRequestService {
       RequestIdempotency idempotency,
       ObjectMapper mapper,
       Clock clock,
-      InitialStockStore loads) {
+      InitialStockStore loads,
+      InboundPromises promises,
+      InboundProperties props,
+      InventorySkuClient skuClient) {
+    this.skuClient = skuClient;
     this.loads = loads;
+    this.promises = promises;
+    this.props = props;
     this.jdbc = jdbc;
     this.events = events;
     this.codec = codec;
@@ -245,9 +301,16 @@ public class SupplyRequestService {
       String supplyRequestId,
       @Nullable Integer expectedVersion,
       Approval a) {
-    String me = supervisor(get(supplyRequestId).mfcId());
+    Row before = get(supplyRequestId);
+    String me = supervisor(before.mfcId());
     List<Line> asked = a.lines() == null ? List.of() : a.lines();
     String note = a.note() == null || a.note().isBlank() ? null : a.note().trim();
+    // R-27: 보급 DC 가 있으면 SKU 온도대(mfc-inventory SKU 사본 storageType)로 TRF 를 나눈다 — 트랜잭션 밖에서 먼저 읽음.
+    // 조회 실패는 그대로 실패(모두 상온으로 보내면 냉장·냉동이 상온 TRF 로 감), 모르는 SKU 는 422.
+    Map<String, String> zones =
+        props.supplyingCdc().isEmpty() || !"SUBMITTED".equals(before.state())
+            ? Map.of()
+            : zonesOf(before.lines().stream().map(Line::sku).distinct().toList());
     String id =
         idempotency
             .execute(
@@ -262,6 +325,56 @@ public class SupplyRequestService {
                       .filter(l -> l.approvedQty() > 0)
                       .forEach(l -> expected.put(l.sku(), l.approvedQty()));
                   Instant now = clock.instant().truncatedTo(ChronoUnit.MILLIS);
+                  String cdc = props.supplyingCdc();
+                  if (!cdc.isEmpty()) {
+                    // ADR-0091·R-27: 보급 DC 가 정해진 센터 — 온도대마다 이관(TRF) 요청 + 입고 예정(EXPECTED).
+                    // MFC 쪽 초기 입고(RCV-SR)는 만들지 않는다. CDC 호출은 트랜잭션 밖(AutoSupply.send)
+                    Map<String, Map<String, Integer>> byZone =
+                        splitByZone(expected, zones, cur.supplyRequestId());
+                    Instant due = dueAtOf(cur.requestedReadyAt(), now);
+                    List<String> trfIds = new ArrayList<>();
+                    int seq = 0;
+                    for (var z : byZone.entrySet()) {
+                      String trfId = trfIdOf(cur.supplyRequestId(), z.getKey(), byZone.size());
+                      trfIds.add(trfId);
+                      promises.expectFromSupply(trfId, cur.mfcId(), cdc, z.getValue(), due);
+                      jdbc.update(
+                          "INSERT INTO supply_request_transfer (trf_id, supply_request_id, seq, cdc_id,"
+                              + " mfc_id, temperature_zone, lines, due_at, next_try_at, created_at)"
+                              + " VALUES (?,?,?,?,?,?,?::jsonb,?,?,?)",
+                          trfId,
+                          supplyRequestId,
+                          ++seq,
+                          cdc,
+                          cur.mfcId(),
+                          z.getKey(),
+                          mapper.writeValueAsString(z.getValue()),
+                          Timestamp.from(due),
+                          Timestamp.from(now),
+                          Timestamp.from(now));
+                    }
+                    jdbc.update(
+                        "UPDATE supply_request SET state = 'APPROVED', approved_lines = ?::jsonb,"
+                            + " decided_by = ?, decided_at = ?, decision_note = ?, linked_trf_id = ?,"
+                            + " transfer_cdc_id = ?, version = version + 1, updated_at = ? WHERE"
+                            + " supply_request_id = ?",
+                        mapper.writeValueAsString(approved),
+                        me,
+                        Timestamp.from(now),
+                        note,
+                        trfIds.getFirst(),
+                        cdc,
+                        Timestamp.from(now),
+                        supplyRequestId);
+                    log.info(
+                        "공급 요청 {} 승인 {}줄 → {} 이관 요청 {} by {}",
+                        supplyRequestId,
+                        approved.size(),
+                        cdc,
+                        trfIds,
+                        me);
+                    return supplyRequestId;
+                  }
                   String receiptId = "RCV-SR-" + UUID.randomUUID();
                   loads.insert(
                       receiptId,
@@ -457,6 +570,182 @@ public class SupplyRequestService {
             () -> PmartException.notFound("SUPPLY_REQUEST_NOT_FOUND", "공급 요청이 없습니다: " + id));
   }
 
+  /**
+   * (ADR-0091·R-27) 이관 ID — 공급 요청 ID 에서 결정(같은 승인 = 같은 TRF). 온도대가 하나면 {@code TRF-<요청 ID>}(DC 시뮬레이터
+   * 임시 다리와 같은 번호), 여럿이면 {@code TRF-<요청 ID>-<온도대>}.
+   */
+  static String trfIdOf(String supplyRequestId, String zone, int zoneCount) {
+    return zoneCount <= 1 ? "TRF-" + supplyRequestId : "TRF-" + supplyRequestId + "-" + zone;
+  }
+
+  /**
+   * (R-27) TRF 기한 — 희망 사용준비 시각(deadlineMeaning READY, 사용자 2026-11-27 PC 3 전달). 이미 지났으면 승인 시각 +
+   * supply-due-after(기본 1일). TMS 는 이 시각 − 12시간의 날을 출고일로 잡는다.
+   */
+  Instant dueAtOf(Instant requestedReadyAt, Instant now) {
+    return requestedReadyAt.isAfter(now) ? requestedReadyAt : now.plus(props.supplyDueAfter());
+  }
+
+  /** SKU → 온도대. 조회 실패는 그대로 실패, 모르는 SKU 는 422 STORAGE_TYPE_UNKNOWN. */
+  private Map<String, String> zonesOf(List<String> skus) {
+    Map<String, String> out = new HashMap<>();
+    skuClient
+        .labels(skus)
+        .forEach(
+            (sku, l) -> {
+              if (l.storageType() != null && ZONES.contains(l.storageType())) {
+                out.put(sku, l.storageType());
+              }
+            });
+    List<String> unknown = skus.stream().filter(x -> !out.containsKey(x)).toList();
+    if (!unknown.isEmpty()) {
+      throw new PmartException(
+          "STORAGE_TYPE_UNKNOWN",
+          HttpStatus.UNPROCESSABLE_CONTENT,
+          "보관 온도대를 모르는 SKU 가 있어 DC 이관을 온도대별로 나눌 수 없습니다: " + String.join(", ", unknown),
+          false,
+          (Throwable) null);
+    }
+    return out;
+  }
+
+  /** 승인 줄을 온도대별로(AMBIENT → CHILLED → FROZEN 순). */
+  static Map<String, Map<String, Integer>> splitByZone(
+      Map<String, Integer> lines, Map<String, String> zones, String supplyRequestId) {
+    Map<String, Map<String, Integer>> out = new LinkedHashMap<>();
+    for (String z : ZONES) {
+      lines.forEach(
+          (sku, q) -> {
+            if (z.equals(zones.get(sku))) {
+              out.computeIfAbsent(z, k -> new LinkedHashMap<>()).put(sku, q);
+            }
+          });
+    }
+    if (out.values().stream().mapToInt(Map::size).sum() != lines.size()) {
+      // 온도대를 읽은 뒤 요청 줄이 바뀜 — 다시 승인하게
+      throw PmartException.versionConflict(
+          "공급 요청 " + supplyRequestId + " 이 승인 중에 바뀌었습니다 — 다시 읽고 승인하세요.");
+    }
+    return out;
+  }
+
+  /**
+   * (ADR-0091) 자동 발주 초안 — 토큰 없이 시스템이 SUBMITTED 로 제출(submitted_by SYSTEM). 미해결 요청에 이미 있는 SKU 는 빼고,
+   * 남은 줄이 없으면 만들지 않는다. 같은 ref(센터·날짜)는 한 번. 만든 요청 ID 또는 null.
+   */
+  @Transactional
+  public @Nullable String createSystem(
+      String mfcId, List<Line> lines, Instant readyAt, String ref, String reason) {
+    jdbc.queryForList("SELECT pg_advisory_xact_lock(hashtext(?))", "supply-request:" + mfcId);
+    Integer done =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM supply_request WHERE submitted_by = 'SYSTEM' AND"
+                + " recommendation_ref = ?",
+            Integer.class,
+            ref);
+    if (done != null && done > 0) {
+      return null;
+    }
+    Set<String> taken = new LinkedHashSet<>();
+    jdbc.query(
+            "SELECT * FROM supply_request WHERE mfc_id = ? AND state IN ('SUBMITTED',"
+                + " 'ACKNOWLEDGED') FOR UPDATE",
+            (rs, i) -> row(rs),
+            mfcId)
+        .forEach(o -> o.lines().forEach(l -> taken.add(l.sku())));
+    List<Line> keep = lines.stream().filter(l -> !taken.contains(l.sku())).limit(200).toList();
+    if (keep.isEmpty()) {
+      return null;
+    }
+    Instant now = clock.instant().truncatedTo(ChronoUnit.MILLIS);
+    String sid = "SR-" + UUID.randomUUID();
+    Body b = new Body(mfcId, readyAt, "NORMAL", reason, ref, keep);
+    jdbc.update(
+        "INSERT INTO supply_request (supply_request_id, mfc_id, state, version, lines,"
+            + " requested_ready_at, urgency, reason, recommendation_ref, submitted_by,"
+            + " submitted_at, updated_at) VALUES (?,?,'SUBMITTED',1,?::jsonb,?,?,?,?,'SYSTEM',?,?)",
+        sid,
+        mfcId,
+        mapper.writeValueAsString(keep),
+        Timestamp.from(readyAt),
+        b.urgency(),
+        reason,
+        ref,
+        Timestamp.from(now),
+        Timestamp.from(now));
+    publish(sid, 1, b, "SYSTEM");
+    log.info("자동 발주 초안 {} {} {}줄({})", sid, mfcId, keep.size(), ref);
+    return sid;
+  }
+
+  /** (ADR-0091) CDC 에 아직 보내지 못한 이관(TRF ID). */
+  public List<String> dueTransfers(Instant now, int limit) {
+    return jdbc.queryForList(
+        "SELECT trf_id FROM supply_request_transfer WHERE sent_at IS NULL AND next_try_at <= ?"
+            + " ORDER BY next_try_at LIMIT ?",
+        String.class,
+        Timestamp.from(now),
+        limit);
+  }
+
+  public Optional<Row> findRow(String supplyRequestId) {
+    return jdbc
+        .query(
+            "SELECT * FROM supply_request WHERE supply_request_id = ?",
+            (rs, i) -> row(rs),
+            supplyRequestId)
+        .stream()
+        .findFirst();
+  }
+
+  /** (ADR-0091) TRF 하나 — 키 = 공급 요청 ID. */
+  public Optional<Map.Entry<String, Transfer>> findTransfer(String trfId) {
+    return jdbc
+        .query(
+            "SELECT * FROM supply_request_transfer WHERE trf_id = ?",
+            (rs, i) -> Map.entry(rs.getString("supply_request_id"), transfer(rs)),
+            trfId)
+        .stream()
+        .findFirst();
+  }
+
+  public void transferSent(String trfId, Instant now) {
+    jdbc.update(
+        "UPDATE supply_request_transfer SET sent_at = ?, attempts = attempts + 1, error = NULL,"
+            + " next_try_at = NULL WHERE trf_id = ? AND sent_at IS NULL",
+        Timestamp.from(now),
+        trfId);
+  }
+
+  /** nextTry null = 다시 보내지 않음(CDC 가 내용으로 거절). */
+  public void transferFailed(String trfId, String error, @Nullable Instant nextTry) {
+    jdbc.update(
+        "UPDATE supply_request_transfer SET attempts = attempts + 1, error = ?, next_try_at = ?"
+            + " WHERE trf_id = ? AND sent_at IS NULL",
+        error.length() > 1000 ? error.substring(0, 1000) : error,
+        nextTry == null ? null : Timestamp.from(nextTry),
+        trfId);
+  }
+
+  private List<Transfer> transfers(String supplyRequestId) {
+    return jdbc.query(
+        "SELECT * FROM supply_request_transfer WHERE supply_request_id = ? ORDER BY seq",
+        (rs, i) -> transfer(rs),
+        supplyRequestId);
+  }
+
+  private Transfer transfer(ResultSet rs) throws SQLException {
+    return new Transfer(
+        rs.getString("trf_id"),
+        rs.getString("temperature_zone"),
+        rs.getString("cdc_id"),
+        mapper.readValue(rs.getString("lines"), ZONE_LINES),
+        rs.getTimestamp("due_at").toInstant(),
+        instant(rs.getTimestamp("sent_at")),
+        rs.getInt("attempts"),
+        rs.getString("error"));
+  }
+
   private Row row(ResultSet rs) throws SQLException {
     Timestamp ack = rs.getTimestamp("acknowledged_at");
     Timestamp decided = rs.getTimestamp("decided_at");
@@ -480,7 +769,15 @@ public class SupplyRequestService {
         decided == null ? null : decided.toInstant(),
         rs.getString("decision_note"),
         rs.getString("reject_reason"),
-        rs.getString("linked_receipt_id"));
+        rs.getString("linked_receipt_id"),
+        rs.getString("transfer_cdc_id"),
+        rs.getString("transfer_cdc_id") == null
+            ? List.of()
+            : transfers(rs.getString("supply_request_id")));
+  }
+
+  private static @Nullable Instant instant(@Nullable Timestamp t) {
+    return t == null ? null : t.toInstant();
   }
 
   private static String supervisor(String mfcId) {
