@@ -96,6 +96,7 @@ GET /api/v1/cdcs/{cdcId}/regions OPERATOR
 GET /api/v1/cdcs/{cdcId}/replenishment-checks OPERATOR
 GET /api/v1/cdcs/{cdcId}/shortages OPERATOR
 GET /api/v1/cdcs/{cdcId}/sku-handlings OPERATOR
+GET /api/v1/cdcs/{cdcId}/stock-movements OPERATOR
 GET /api/v1/cdcs/{cdcId}/stock-snapshot OPERATOR
 GET /api/v1/cdcs/{cdcId}/tasks OPERATOR
 GET /api/v1/cdcs/{cdcId}/tasks/{taskId} OPERATOR
