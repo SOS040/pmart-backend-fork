@@ -15,7 +15,7 @@ LAN 시험에 쓰는 직원 계정과 역할·센터를 한곳에 모은 목록�
 | `test-cs-rider@pmart.com` | `CS_AGENT`·`RIDER_OPS` | 모든 센터 | `keycloak-test-cs-rider@pmart.com-password` | 고객센터·라이더 운영·지원센터 메뉴 |
 | `claude-approver` | 승인 역할들 + `HR_ADMIN` + `MD`(2026-11-22 동의어 요청) | — | `keycloak-claude-approver-password` | 승인함, 인사팀 앱(직원 등록·권한 관리) |
 | `claude-mfc-sup` | `MFC_SUPERVISOR` | `MFC-BJG-01`·`MFC-MOKPO-01`·`MFC-SEJ-01`·`MFC-CHC-01`·`MFC-BNG-01`(2026-11-24 다섯 센터 — 사용자 "claude-mfc-sup 를 다섯 센터로 넓혀") | `keycloak-claude-mfc-sup-password` | MFC 백오피스(:8445), 센터 관리자 시험 — 직원 번호 `OP-88399b05-87b7-48e2-aa33-229a3ab36f93`(2026-11-16 로그인 확인) |
-| `claude-mfc-wrk` | `MFC_WORKER` | `MFC-SEED-01`·`MFC-MOKPO-01`(2026-11-22 R-39) | `keycloak-claude-mfc-wrk-password` | 시뮬레이터 작업자·`mfc_e2e.py` — 직원 번호 `OP-d696814f-4cd7-4263-86a6-032b591e5b42` |
+| `claude-mfc-wrk` | `MFC_WORKER` | `MFC-BJG-01`·`MFC-MOKPO-01`·`MFC-SEJ-01`·`MFC-CHC-01`·`MFC-BNG-01`(2026-11-26 토큰으로 확인 — 옛 `MFC-SEED-01` 은 R-46 에서 `MFC-BJG-01`) | `keycloak-claude-mfc-wrk-password` | 시뮬레이터 작업자·`mfc_e2e.py` — 직원 번호 `OP-d696814f-4cd7-4263-86a6-032b591e5b42` |
 | `claude-mfc-sup-mk` | `MFC_SUPERVISOR` | `MFC-MOKPO-01` | `keycloak-claude-mfc-sup-mk-password` | 2호점 목포 MFC 센터 관리자(R-39, 2026-11-22 인사 등록·권한 승인 `AP-c2214661-…`) — 직원 번호 `OP-d9fbce5f-26ba-47aa-9cd2-fafd52ca8916`, 메일 `claude-mfc-sup-mk@pmart.com` |
 | `seed-approver` | Seed.java 승인 역할들(`CENTER_MASTER_APPROVER` 등) | — | `keycloak-seed-approver-password` | `deploy/lan/seed/Seed.java`·R-39 목포 센터 생성 승인. 2026-11-22 비밀번호 파일을 새로 만들었다(그 전 값은 파일 없이 실행마다 바뀌던 것) |
 
