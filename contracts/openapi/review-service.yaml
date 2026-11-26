@@ -1,9 +1,11 @@
 openapi: 3.1.0
 info:
   title: review-service
-  version: 0.8.0
+  version: 0.9.0
   x-stage: 2
   description: |
+    0.9.0(2026-11-26, 고객앱 상품 페이지 R4 — 사용자 "리뷰 '재구매' 표시 … 반영되게"·"그대로 해줘"): 상품 리뷰 목록 항목 `repurchased` — 작성자가 그 상품을
+    서로 다른 주문 2번 이상 배송 완료로 받았는지(자기 표 review_eligibility 로, order 를 부르지 않음 — 2026-11-16 전 배송은 없음). 토큰 없이도 나온다(작성자 개인정보 아님 — 표시만).
     0.8.0(2026-11-24, 통합 백오피스 "리뷰 신고 눌러서 상세 확인" — 사용자 "보이는데 눌러서 상세확인 같은걸 할 수 없다고", 신고자는 "안 보여 줌"): 운영자
     `GET /review-reports/{reviewId}`(CS_AGENT·OPERATOR_ADMIN) — 리뷰 글 전체·사진·상태와 그 리뷰의 신고 한 건 한 건(사유·기타 글·신고 시각·처리 결과·처리 직원·처리 메모,
     최근 순, 처리 전·끝 모두). **신고자는 싣지 않는다.** 사진 본문 `GET /review-photos/{photoId}` 는 상담원·운영 관리자 토큰이면 운영자가 숨긴 리뷰의 사진도 준다
@@ -602,6 +604,7 @@ components:
         helpedByMe: { type: [boolean, 'null'], description: '0.6.0 — 회원 토큰으로 볼 때 내가 눌렀는지. 비회원·토큰 없음은 null' }
         reportedByMe: { type: [boolean, 'null'], description: '0.7.0 BR-90 — 회원 토큰으로 볼 때 내가 신고했는지(상품 리뷰 목록). 그 밖 null' }
         mine: { type: [boolean, 'null'], description: '0.7.0 BR-90 — 회원 토큰으로 볼 때 내 리뷰인지(상품 리뷰 목록 — 신고 버튼 숨김). 그 밖 null' }
+        repurchased: { type: [boolean, 'null'], x-added-in: '2026-11-26', description: '0.9.0 R4(고객앱 2026-11-25 상품 페이지) — 작성자가 이 상품을 서로 다른 주문 2번 이상 배송 완료로 받은 회원이면 true(토큰 없이도 나옴). review-service 의 배송 완료 기록으로 센다 — 2026-11-16 전 배송은 세지 않는다. 상품 리뷰 목록 밖은 null' }
     HelpfulResult:
       type: object
       required: [reviewId, helpfulCount, helpedByMe]

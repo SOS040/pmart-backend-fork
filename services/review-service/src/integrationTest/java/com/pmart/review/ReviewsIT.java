@@ -222,6 +222,18 @@ class ReviewsIT extends PostgresKafkaContainerSupport {
                     .withBody("{\"accountId\":\"x\",\"displayName\":\"장***\"}")));
   }
 
+  /** 배송 완료 품목 한 줄을 표에 바로(재구매 셈 시험 — 사건 없이). */
+  void insertEligibility(String orderId, String accountId, String productId) {
+    jdbc.update(
+        "INSERT INTO review_eligibility (order_line_id, order_id, account_id, sku, product_id,"
+            + " product_name, delivered_qty, delivered_at, created_at)"
+            + " VALUES (?, ?, ?, 'E-00000009', ?, '시험', 1, now(), now())",
+        orderId + "-L1",
+        orderId,
+        accountId,
+        productId);
+  }
+
   void delivered(String orderId, Instant at, String... lineIds) {
     Map<String, Object> p = new LinkedHashMap<>();
     p.put("deliveryId", "DLV-" + orderId);
@@ -417,6 +429,21 @@ class ReviewsIT extends PostgresKafkaContainerSupport {
             .body()
             .path("reviewId")
             .asString();
+
+    // 0.9.0 R4 재구매: 같은 주문 두 줄은 1번 — false. 다른 상품의 다른 주문도 안 센다.
+    insertEligibility("ORD-HP-X-" + newId(), me, "PRD-OTHER-" + newId());
+    Res once = send("GET", null, "/products/" + productId + "/reviews", null);
+    assertThat(once.body().path("items").findValuesAsString("reviewId")).hasSize(2);
+    assertThat(once.body().path("items").path(0).path("repurchased").asBoolean()).isFalse();
+    // 같은 상품을 다른 주문으로 한 번 더 받으면 true(토큰 없이도)
+    insertEligibility("ORD-HP-2-" + newId(), me, productId);
+    Res again = send("GET", null, "/products/" + productId + "/reviews", null);
+    assertThat(again.body().path("items").path(0).path("repurchased").asBoolean()).isTrue();
+    assertThat(again.body().path("items").path(1).path("repurchased").asBoolean()).isTrue();
+    // 단건 조회는 목록 밖 — null
+    Res single = send("GET", null, "/reviews/" + first, null);
+    assertThat(single.status()).isEqualTo(200);
+    assertThat(single.body().path("repurchased").asBoolean(false)).isFalse();
 
     // 도움돼요: 내 리뷰 422, 다른 회원 누르기(두 번 눌러도 1), 비회원 401·403
     Res own = send("PUT", token, "/reviews/" + second + "/helpful", null);

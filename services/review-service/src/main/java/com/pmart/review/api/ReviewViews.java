@@ -50,7 +50,9 @@ final class ReviewViews {
         .helpedByMe(v.helpedByMe())
         // 0.7.0 BR-90
         .reportedByMe(v.reportedByMe())
-        .mine(v.mine());
+        .mine(v.mine())
+        // 0.9.0 R4
+        .repurchased(v.repurchased());
   }
 
   static GetReviewInternal200Response internal(ReviewView v) {

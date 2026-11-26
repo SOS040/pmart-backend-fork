@@ -37,6 +37,12 @@ public final class ReviewRules {
   public static final String ELIGIBLE = "REV_ELIGIBLE";
   public static final String EXPIRED = "EXPIRED";
 
+  /**
+   * 재구매 표시(0.9.0 R4, 2026-11-26 사용자): 작성자가 그 상품을 서로 다른 주문 이만큼 이상 배송 완료로 받았으면 true. 셈은 자기 표
+   * review_eligibility(배송 완료 품목) — order 를 부르지 않는다.
+   */
+  public static final int REPURCHASE_MIN_ORDERS = 2;
+
   private ReviewRules() {}
 
   public static Instant eligibleUntil(Instant deliveredAt) {

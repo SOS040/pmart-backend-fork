@@ -470,6 +470,26 @@ public class ReviewStore {
             "{" + String.join(",", reviewIds) + "}"));
   }
 
+  /**
+   * 0.9.0 R4: 이 상품을 서로 다른 주문 {@link com.pmart.review.domain.ReviewRules#REPURCHASE_MIN_ORDERS}번 이상
+   * 배송 완료로 받은 작성자(배송 완료 품목 표 — 2026-11-16 전 배송은 없음).
+   */
+  public java.util.Set<String> repurchasers(
+      String productId, java.util.Collection<String> accountIds) {
+    if (accountIds.isEmpty()) {
+      return java.util.Set.of();
+    }
+    return new java.util.HashSet<>(
+        jdbc.queryForList(
+            "SELECT account_id FROM review_eligibility WHERE product_id = ?"
+                + " AND account_id = ANY (?) GROUP BY account_id"
+                + " HAVING count(DISTINCT order_id) >= ?",
+            String.class,
+            productId,
+            accountIds.toArray(String[]::new),
+            com.pmart.review.domain.ReviewRules.REPURCHASE_MIN_ORDERS));
+  }
+
   public Summary summary(String productId) {
     return jdbc.queryForObject(
         "SELECT avg(rating)::float8 AS a, count(*) AS c FROM review"

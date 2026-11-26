@@ -65,11 +65,24 @@ public class ReviewService {
       @Nullable Instant deliveredAt,
       @Nullable Boolean helpedByMe,
       @Nullable Boolean reportedByMe,
-      @Nullable Boolean mine) {
+      @Nullable Boolean mine,
+      @Nullable Boolean repurchased) {
+
+    /** repurchased(0.9.0 R4) 없이 — 상품 리뷰 목록 밖. */
+    public ReviewView(
+        ReviewRow row,
+        List<PhotoRow> photos,
+        String state,
+        @Nullable Instant deliveredAt,
+        @Nullable Boolean helpedByMe,
+        @Nullable Boolean reportedByMe,
+        @Nullable Boolean mine) {
+      this(row, photos, state, deliveredAt, helpedByMe, reportedByMe, mine, null);
+    }
 
     public ReviewView(
         ReviewRow row, List<PhotoRow> photos, String state, @Nullable Instant deliveredAt) {
-      this(row, photos, state, deliveredAt, null, null, null);
+      this(row, photos, state, deliveredAt, null, null, null, null);
     }
 
     public ReviewView(
@@ -78,7 +91,7 @@ public class ReviewService {
         String state,
         @Nullable Instant deliveredAt,
         @Nullable Boolean helpedByMe) {
-      this(row, photos, state, deliveredAt, helpedByMe, null, null);
+      this(row, photos, state, deliveredAt, helpedByMe, null, null, null);
     }
   }
 
@@ -527,6 +540,10 @@ public class ReviewService {
         viewer == null
             ? java.util.Set.of()
             : reportStore.reportedBy(viewer, page.stream().map(ReviewRow::reviewId).toList());
+    // 0.9.0 R4(2026-11-26 사용자) — 작성자가 이 상품을 서로 다른 주문 2번 이상 배송 완료로 받았는지(자기 표 review_eligibility,
+    // order 를 부르지 않음). 쪽 하나에 질의 한 번.
+    java.util.Set<String> repurchasers =
+        store.repurchasers(productId, page.stream().map(ReviewRow::accountId).distinct().toList());
     List<ReviewView> items =
         page.stream()
             .map(
@@ -538,7 +555,8 @@ public class ReviewService {
                         null,
                         viewer == null ? null : helped.contains(r.reviewId()),
                         viewer == null ? null : reported.contains(r.reviewId()),
-                        viewer == null ? null : r.accountId().equals(viewer)))
+                        viewer == null ? null : r.accountId().equals(viewer),
+                        repurchasers.contains(r.accountId())))
             .toList();
     ReviewStore.Summary s = store.summary(productId);
     // reviewCount 는 거른 수(0.6.0), 평균은 상품 전체
