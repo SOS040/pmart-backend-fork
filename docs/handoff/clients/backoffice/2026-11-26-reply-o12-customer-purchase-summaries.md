@@ -5,7 +5,7 @@
 요청: 요청서 `docs/architecture/service-requests/order-service.md` O-12(PC 2 #365, 2026-11-23)
 작성: pmart-backend PC 1, 2026-11-26 — 사용자 "고객별 남은거 해줘"
 계약: **order-service 0.25.0**(`contracts/openapi/order-service.yaml` `getCustomerPurchaseSummaries`·`findCustomersByLastOrder`)
-상태: 구현·시험 통과. **LAN 배포 전**(배포되면 이 줄을 고친다)
+상태: **LAN 배포**(2026-11-26, b3e1e56e — pc2 order-service, pc4 api-gateway 허용 목록). LAN 확인: 11월 마지막 구매 고객 8명(5개씩 두 쪽, 겹침 0), 요약 200(산 것 없는 ID 는 0), 기간 없음 400, 고객 토큰 403
 함께 볼 것: O-13 회신 `docs/handoff/clients/backoffice/2026-11-26-reply-o13-customer-purchase-metrics.md`(같은 정의)
 
 ## 권한
