@@ -15,12 +15,12 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * cdc-inventory {@code POST /internal/transit-closures}(0.14.0) — MFC 가 CDC 이관 입고를 "더 받을 것 없음"으로 종결했다고 알린다(요청
- * MI-5). 토큰 없음(ADR-0026 — 공용 RestClient 가 내부 호출로 붙인다). Idempotency-Key 는 TRF 마다 하나라 다시 보내도 CDC 는 한 번만
- * 기록한다.
+ * cdc-inventory {@code POST /internal/transit-closures}(0.14.0) — MFC 가 CDC 이관 입고를 "더 받을 것 없음"으로
+ * 종결했다고 알린다(요청 MI-5). 토큰 없음(ADR-0026 — 공용 RestClient 가 내부 호출로 붙인다). Idempotency-Key 는 TRF 마다 하나라 다시
+ * 보내도 CDC 는 한 번만 기록한다.
  *
- * <p>결과: 2xx 기록됨, 409 TRANSIT_CLOSURE_CONFLICT 는 다른 내용으로 이미 종결(다시 보내지 않음), 그 밖(404 DEPARTURE_NOT_POSTED — CDC 가
- * 아직 출발을 모름, 미전달·503·응답 불명)은 나중에 다시.
+ * <p>결과: 2xx 기록됨, 409 TRANSIT_CLOSURE_CONFLICT 는 다른 내용으로 이미 종결(다시 보내지 않음), 그 밖(404
+ * DEPARTURE_NOT_POSTED — CDC 가 아직 출발을 모름, 미전달·503·응답 불명)은 나중에 다시.
  */
 @Component
 public class CdcTransitClosureClient {

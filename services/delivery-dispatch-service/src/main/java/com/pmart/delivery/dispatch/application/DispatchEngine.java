@@ -199,9 +199,10 @@ public class DispatchEngine {
 
   /**
    * 배차 불가 자동 취소(2026-11-20 사용자 "배차 신청 계속 하다가 많이 지연되면 기사 없다고 취소", "쿠폰 안 되면 자동취소만", "약속+30분"): 고객
-   * 배송(FORWARD)이 배차 요청(배송 생성) + autoCancelAfter(2026-11-26 사용자 "배차 시작 + 20분" — 전에는 약속 + 30분)가 지나도 라이더 없이 배차 대기면 claim 시스템 취소(DISPATCH_UNAVAILABLE — 주문
-   * 전체 취소·전액 환불, 2,000원 쿠폰은 promotion 이 생길 때). 이 배송은 그 뒤 OrderCancelled 로 픽업 전 취소된다. 호출은 트랜잭션 밖,
-   * 결과는 한 번 기록(거절 코드면 다시 부르지 않음 — MFC 관리자 수동 취소로), 일시 장애면 1분 뒤 다시.
+   * 배송(FORWARD)이 배차 요청(배송 생성) + autoCancelAfter(2026-11-26 사용자 "배차 시작 + 20분" — 전에는 약속 + 30분)가 지나도
+   * 라이더 없이 배차 대기면 claim 시스템 취소(DISPATCH_UNAVAILABLE — 주문 전체 취소·전액 환불, 2,000원 쿠폰은 promotion 이 생길 때).
+   * 이 배송은 그 뒤 OrderCancelled 로 픽업 전 취소된다. 호출은 트랜잭션 밖, 결과는 한 번 기록(거절 코드면 다시 부르지 않음 — MFC 관리자 수동
+   * 취소로), 일시 장애면 1분 뒤 다시.
    */
   void autoCancelNoRider(Instant now) {
     for (DispatchStore.AutoCancelTarget t :

@@ -568,7 +568,8 @@ public class DepartureService {
     p.put("tripId", cmd.tripId());
     p.put("fromCdc", t.cdcId());
     p.put("toMfc", t.mfcId());
-    // CO-2(2026-11-26): 줄의 lpn 은 BOX(수량을 가진 단위) — 박스 바코드 원문 = LPN 값 그대로. 담긴 RT·PLT 는 parentLpn, 그릇 목록은 containers
+    // CO-2(2026-11-26): 줄의 lpn 은 BOX(수량을 가진 단위) — 박스 바코드 원문 = LPN 값 그대로. 담긴 RT·PLT 는 parentLpn, 그릇
+    // 목록은 containers
     List<LpnRow> departed = lpns.departedOfTrf(t.trfId(), cmd.departureId());
     Map<String, String> parentOf = new HashMap<>();
     List<Map<String, Object>> containers = new ArrayList<>();

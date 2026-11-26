@@ -235,8 +235,9 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
   }
 
   /**
-   * IV-8(2026-11-26): CDC 이관 수령(fromCdc 있음)은 MfcReceiptPosted 를 한 번 낸다 — 줄 lot 은 CDC 출발 LOT(sourceLotRef) 그대로,
-   * receivedQty = 정상 + 격리 + 미판정. 같은 receiptId 재전송은 사건을 더 내지 않고, fromCdc 없는 수령은 내지 않는다.
+   * IV-8(2026-11-26): CDC 이관 수령(fromCdc 있음)은 MfcReceiptPosted 를 한 번 낸다 — 줄 lot 은 CDC 출발
+   * LOT(sourceLotRef) 그대로, receivedQty = 정상 + 격리 + 미판정. 같은 receiptId 재전송은 사건을 더 내지 않고, fromCdc 없는
+   * 수령은 내지 않는다.
    */
   @Test
   void cdcTransferReceiptPublishesMfcReceiptPostedOnce() {

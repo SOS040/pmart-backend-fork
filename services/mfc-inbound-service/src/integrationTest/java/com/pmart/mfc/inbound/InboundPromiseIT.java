@@ -633,7 +633,8 @@ class InboundPromiseIT extends PostgresKafkaContainerSupport {
         WireMock.post(urlPathEqualTo("/api/v1/internal/transit-closures"))
             .withRequestBody(matchingJsonPath("$.trfId", equalTo(trf2)))
             .willReturn(json(200, "{\"trfId\":\"x\",\"unreconciledQty\":5}")));
-    Res closed = post(sup, cpath, UUID.randomUUID().toString(), Map.of("reason", "차량 사고 미도착"), null);
+    Res closed =
+        post(sup, cpath, UUID.randomUUID().toString(), Map.of("reason", "차량 사고 미도착"), null);
     assertThat(closed.status()).as(closed.body().toString()).isEqualTo(202);
     JsonNode c = get(sup, "/inbound-promises/" + trf2).body();
     assertThat(c.path("state").asString()).isEqualTo("CLOSED");

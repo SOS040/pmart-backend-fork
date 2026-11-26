@@ -33,12 +33,12 @@ import org.springframework.stereotype.Service;
  * <ul>
  *   <li>자동(AUTO): 수령은 TRF 하나에 한 번(RECEIVING 일 때만)이라 재고 반영(TIN_POSTED) 순간 더 받을 것이 없다 — {@link
  *       InboundPromises} 가 같은 트랜잭션에서 {@link #closeAfterPosting} 을 부른다.
- *   <li>관리자(MANUAL): 물건이 오지 않은 이관 — 그 센터 MFC_SUPERVISOR 가 사유와 함께 종결(EXPECTED·RECEIVING, 출발 받음, 열린 수령
- *       없음). 예정은 CLOSED.
+ *   <li>관리자(MANUAL): 물건이 오지 않은 이관 — 그 센터 MFC_SUPERVISOR 가 사유와 함께 종결(EXPECTED·RECEIVING, 출발 받음, 열린
+ *       수령 없음). 예정은 CLOSED.
  * </ul>
  *
- * CDC 출발 사건(fromCdc·departureId)이 없는 예정은 종결 대상이 아니다. 알림은 트랜잭션 밖({@link #sendDue}, 주기 작업) — 실패하면 1분부터
- * 두 배(최대 30분)로 다시, CDC 가 409(다른 내용)면 멈춘다.
+ * CDC 출발 사건(fromCdc·departureId)이 없는 예정은 종결 대상이 아니다. 알림은 트랜잭션 밖({@link #sendDue}, 주기 작업) — 실패하면
+ * 1분부터 두 배(최대 30분)로 다시, CDC 가 409(다른 내용)면 멈춘다.
  */
 @Service
 public class TransitClosures {

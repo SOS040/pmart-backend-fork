@@ -36,7 +36,8 @@ import org.springframework.transaction.annotation.Transactional;
  * ConfirmReceipt(TIN 전기, IV-02, ADR-0040 결정 3). 수령 위치에 UNSTOWED 로 넣는다 — 정상·미판정 PENDING_INSPECTION,
  * 격리 QUARANTINED. H(와 격리분 Q)만 늘고 E 는 검수(INSPECT)·적치(PUTAWAY) 뒤에 생긴다. 줄마다 LOT 을 정한다: 상류 LOT 표기나
  * 소비기한이 있으면 같은 SKU·표기·기한의 추적 LOT, 둘 다 없으면 추적 미확인 LOT. 같은 receiptId 는 한 번만 계상한다(내용 지문이 같으면 처음
- * commitId). CDC 이관(fromCdc 있음)이면 같은 트랜잭션에서 MfcReceiptPosted(IV-8, 0.52.0 — cdc-inventory 운송 중 대사)를 낸다.
+ * commitId). CDC 이관(fromCdc 있음)이면 같은 트랜잭션에서 MfcReceiptPosted(IV-8, 0.52.0 — cdc-inventory 운송 중 대사)를
+ * 낸다.
  */
 @Service
 public class ReceiptService {
@@ -181,8 +182,8 @@ public class ReceiptService {
   }
 
   /**
-   * MfcReceiptPosted(IV-8) — CDC 가 출발 줄과 맞추도록 lot 은 수령 줄의 상류 LOT 표기(= CDC 출발 LOT) 그대로. 같은 receiptId 는
-   * claimReceipt 가 한 번만 여기까지 오게 한다.
+   * MfcReceiptPosted(IV-8) — CDC 가 출발 줄과 맞추도록 lot 은 수령 줄의 상류 LOT 표기(= CDC 출발 LOT) 그대로. 같은 receiptId
+   * 는 claimReceipt 가 한 번만 여기까지 오게 한다.
    */
   private void publishReceiptPosted(ReceiptCommand cmd, String commitId, int total, Instant at) {
     List<Map<String, Object>> lines = new ArrayList<>();

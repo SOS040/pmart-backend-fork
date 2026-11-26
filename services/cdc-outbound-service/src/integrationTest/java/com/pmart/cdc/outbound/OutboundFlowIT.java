@@ -815,11 +815,10 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
     assertThat(outbox("TransferShipmentManifestIssued")).isEqualTo(1);
     // CO-1·CO-2(0.30.0): 매니페스트 줄 = BOX(박스 바코드 = LPN 값 그대로)·담긴 RT, 그릇 목록, 송장 라벨 값
     JsonNode manEv =
-        read(
-                jdbc.queryForObject(
-                    "SELECT payload::text FROM outbox_event WHERE type ="
-                        + " 'TransferShipmentManifestIssued'",
-                    String.class))
+        read(jdbc.queryForObject(
+                "SELECT payload::text FROM outbox_event WHERE type ="
+                    + " 'TransferShipmentManifestIssued'",
+                String.class))
             .path("payload");
     assertThat(manEv.path("lines").findValuesAsString("unitType")).containsOnly("BOX");
     assertThat(manEv.path("lines").findValuesAsString("parentLpn")).containsOnly(rt);

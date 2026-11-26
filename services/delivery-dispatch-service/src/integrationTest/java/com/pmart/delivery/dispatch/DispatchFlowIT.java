@@ -1580,8 +1580,8 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
   }
 
   /**
-   * 배차 불가 자동 취소(2026-11-26 사용자 "배차 시작 + 20분" — 전에는 약속 + 30분): 배차 요청(배송 생성) + 20분이 지나도 라이더 없는 고객
-   * 배송 → claim 시스템 취소(DISPATCH_UNAVAILABLE) 한 번. 20분 전이면 부르지 않는다(약속 시각은 보지 않는다).
+   * 배차 불가 자동 취소(2026-11-26 사용자 "배차 시작 + 20분" — 전에는 약속 + 30분): 배차 요청(배송 생성) + 20분이 지나도 라이더 없는 고객 배송
+   * → claim 시스템 취소(DISPATCH_UNAVAILABLE) 한 번. 20분 전이면 부르지 않는다(약속 시각은 보지 않는다).
    */
   @Test
   void undispatchedDeliveryIsAutoCancelled20MinutesAfterDispatchRequest() {
