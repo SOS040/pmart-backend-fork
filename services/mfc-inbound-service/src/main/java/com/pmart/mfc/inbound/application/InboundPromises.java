@@ -665,7 +665,8 @@ public class InboundPromises {
                 text(l, "lot"),
                 text(l, "lpn"),
                 l.path("qty").asInt(0),
-                text(l, "expiryDate")));
+                text(l, "expiryDate"),
+                text(l, "parentLpn"))); // CO-2: 박스가 담긴 롤테이너·팔레트
       }
     }
     return out;

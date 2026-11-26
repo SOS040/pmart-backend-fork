@@ -29,7 +29,18 @@ public final class InboundPromiseRules {
       @Nullable String lot,
       @Nullable String lpn,
       int qty,
-      @Nullable String expiryDate) {}
+      @Nullable String expiryDate,
+      @Nullable String parentLpn) {
+
+    public ShipLine(
+        String sku,
+        @Nullable String lot,
+        @Nullable String lpn,
+        int qty,
+        @Nullable String expiryDate) {
+      this(sku, lot, lpn, qty, expiryDate, null);
+    }
+  }
 
   /** 현장 수령 줄. lotId 는 CDC LOT 표기(inventory sourceLotRef). */
   public record ReceiptLine(

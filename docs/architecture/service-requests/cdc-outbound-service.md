@@ -6,6 +6,7 @@
 - **지금(임시 방식)**: CDC 출고·이송이 없어 라벨도 없다. MFC PDA 는 목에서 이 형식을 해석하고, 맞는 송장인지는 trfId 만 비교한다(버전은 인쇄 때 값).
 - **요청한 쪽에서 바꿀 것**: 없음(계약 `mfc-inbound-service.yaml` 0.8.0 도착 등록 설명에 적음). 형식을 바꾸면 mfc-inbound 계약과 클라이언트에 알린다.
 - **사용자 결정 필요**: 없음(라벨 형식은 기존 규칙을 따름). LPN 별 라벨을 따로 둘지는 cdc-outbound 설계 때.
+- **상태(2026-11-26 PC 1 — 사용자 "구현해"·"전부 여기서")**: **구현** — cdc-outbound 0.30.0 TRF 응답(TransferSummary·TransferDetail) `labelValue` = `TRF:{trfId}:{trfVersion}`(`application/TransferLabels`), 출발 매니페스트 사건에도 `labelValue`.
 - 근거: `docs/handoff/clients/mfc-app/2026-11-13-reply-br53-inbound-receiving.md` §3
 
 ## CO-2 이송 박스 바코드 형식·박스 단위 값 (입고 예정 박스 목록)
@@ -17,4 +18,5 @@
 - **지금(임시 방식)**: mfc-inbound 0.16.0 `InboundPromise.packages[]` 는 매니페스트(없으면 출발 TOUT 줄)의 `lpn` 을 **받은 값 그대로** 보인다(형식을 만들지 않음). 박스 수·입수·롤테이너 수는 넣지 않았다. 앱은 목에서 `BOX-…`·박스째 +12 버튼을 쓰고, 실서버에서는 LPN 목록만 보인다.
 - **요청한 쪽에서 바꿀 것**: 형식이 정해지면 mfc-inbound 계약 `packages` 설명(필요하면 `unitsPerBox`·`rollContainers` 칸)과 클라이언트 회신을 고친다.
 - **사용자 결정 필요**: 박스 라벨 형식(G-05 를 백엔드 규칙으로 올릴지). cdc-outbound 설계 때.
+- **상태(2026-11-26 PC 1 — 사용자 "구현해"·"전부 여기서", 추천안)**: **구현** — ① 박스 바코드 원문 = **CDC 분류 때 등록한 LPN 값 그대로**(새 형식 `BOX-…` 를 백엔드 규칙으로 올리지 않음 — 현장 라벨 값이 곧 LPN). ② 매니페스트 줄 lpn = BOX(수량은 BOX 만), 줄 `unitType: BOX`·`parentLpn`(담긴 RT·PLT), 사건 `containers[{lpn, unitType}]`(cdc-outbound 0.30.0, `_defs` SkuLotLpnQty 에 unitType·parentLpn 추가). mfc-inbound 0.22.0 `InboundPromise.packages[].parentLpn`. ③ 입수(`unitsPerBox`)는 상품 마스터에 없어 **아직**(박스 하나 = 줄 qty 로 셈).
 - 근거: pmart-clients `docs/handoff/mfc-app/2026-11-10-backend-pda-work-areas.md` R17, 회신 `docs/handoff/clients/mfc-app/2026-11-20-reply-br53-inbound-promises.md`

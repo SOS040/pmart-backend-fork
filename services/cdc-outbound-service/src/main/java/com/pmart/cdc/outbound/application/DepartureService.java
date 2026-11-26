@@ -568,6 +568,25 @@ public class DepartureService {
     p.put("tripId", cmd.tripId());
     p.put("fromCdc", t.cdcId());
     p.put("toMfc", t.mfcId());
+    // CO-2(2026-11-26): 줄의 lpn 은 BOX(수량을 가진 단위) — 박스 바코드 원문 = LPN 값 그대로. 담긴 RT·PLT 는 parentLpn, 그릇 목록은 containers
+    List<LpnRow> departed = lpns.departedOfTrf(t.trfId(), cmd.departureId());
+    Map<String, String> parentOf = new HashMap<>();
+    List<Map<String, Object>> containers = new ArrayList<>();
+    for (LpnRow r : departed) {
+      if (r.parentLpn() != null) {
+        parentOf.put(r.lpn(), r.parentLpn());
+      }
+    }
+    // 그릇(RT·PLT)은 출발 표시가 박스에만 붙을 수 있어 박스의 parentLpn 으로 찾는다
+    lpns.find(new java.util.TreeSet<>(parentOf.values()))
+        .values()
+        .forEach(
+            r -> {
+              Map<String, Object> c = new LinkedHashMap<>();
+              c.put("lpn", r.lpn());
+              c.put("unitType", r.unitType());
+              containers.add(c);
+            });
     p.put(
         "lines",
         lines.stream()
@@ -577,6 +596,10 @@ public class DepartureService {
                   m.put("sku", l.sku());
                   m.put("lot", l.lot());
                   m.put("lpn", l.lpn());
+                  m.put("unitType", "BOX");
+                  if (parentOf.containsKey(l.lpn())) {
+                    m.put("parentLpn", parentOf.get(l.lpn()));
+                  }
                   m.put("qty", l.qty());
                   if (l.expiresAt() != null) {
                     m.put("expiryDate", l.expiresAt().toString());
@@ -584,6 +607,8 @@ public class DepartureService {
                   return m;
                 })
             .toList());
+    p.put("containers", containers);
+    p.put("labelValue", TransferLabels.value(t.trfId(), t.trfVersion()));
     p.put("totalQty", lines.stream().mapToInt(ManifestLine::qty).sum());
     p.put("issuedAt", at.toString());
     support.publish(

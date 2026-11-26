@@ -1487,11 +1487,12 @@ components:
           type: array
           description: |
             (0.16.0, 클라이언트 BR-53 R17 일부) 출발 매니페스트(없으면 출발 줄)의 LPN 단위 목록 — CDC 가 준 LPN 값 그대로. 박스 바코드 형식(`BOX-…`)·입수·롤테이너 수는
-            원천 사건에 없어 넣지 않았다(요청 cdc-outbound CO-2).
+            원천 사건에 없어 넣지 않았다(요청 cdc-outbound CO-2). (0.22.0) CO-2 구현 — 박스 바코드 = lpn 값 그대로, 담긴 롤테이너·팔레트 `parentLpn`. 입수는 아직 없음.
           items:
             type: object
             properties:
-              lpn: { type: [string, 'null'] }
+              lpn: { type: [string, 'null'], description: '(0.22.0, CO-2) 박스(BOX) LPN — 박스 바코드 원문 = 이 값 그대로(CDC 분류 때 등록한 값)' }
+              parentLpn: { type: [string, 'null'], description: '(0.22.0, CO-2) 이 박스가 담긴 롤테이너(RT)·팔레트(PLT) LPN — 매니페스트에 없으면 null' }
               sku: { type: string }
               lotId: { type: [string, 'null'] }
               qty: { type: integer }

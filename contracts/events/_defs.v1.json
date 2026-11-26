@@ -37,6 +37,8 @@
         "sku": { "$ref": "#/$defs/Sku" },
         "lot": { "type": "string" },
         "lpn": { "type": "string" },
+        "unitType": { "type": "string", "enum": ["BOX", "PLT", "RT"], "description": "(2026-11-26 CO-2) lpn 단위 — 수량을 가진 줄은 BOX" },
+        "parentLpn": { "type": "string", "description": "(2026-11-26 CO-2) 이 BOX 가 담긴 롤테이너(RT)·팔레트(PLT) LPN" },
         "qty": { "$ref": "#/$defs/Qty" },
         "expiryDate": { "$ref": "#/$defs/Date" },
         "expiryAt": { "$ref": "#/$defs/DateTime" }

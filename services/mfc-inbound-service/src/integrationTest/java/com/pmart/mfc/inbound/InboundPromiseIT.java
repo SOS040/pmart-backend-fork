@@ -558,6 +558,8 @@ class InboundPromiseIT extends PostgresKafkaContainerSupport {
                     "commitId",
                     "TOUT-2"))
             .build());
+    // 출발이 먼저 반영된 뒤 늦은 취소(토픽이 달라 순서가 보장되지 않는다 — 2026-11-26 흔들림 고침)
+    await(w, trf2, n -> !n.path("departureId").isNull() && n.has("departureId"));
     send(
         "scm.replenishment.v1",
         trf2,

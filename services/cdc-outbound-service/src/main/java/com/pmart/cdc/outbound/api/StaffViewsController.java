@@ -363,6 +363,8 @@ public class StaffViewsController implements StaffViewsApi {
     var out = new TransferDetail();
     out.setTrfId(t.trfId());
     out.setTrfVersion(t.trfVersion());
+    out.setLabelValue(
+        com.pmart.cdc.outbound.application.TransferLabels.value(t.trfId(), t.trfVersion()));
     out.setMfcId(t.mfcId());
     out.setState(t.state());
     out.setDeadlineMeaning(t.deadlineMeaning());
@@ -480,6 +482,8 @@ public class StaffViewsController implements StaffViewsApi {
     return new TransferSummary()
         .trfId(t.trfId())
         .trfVersion(t.trfVersion())
+        .labelValue(
+            com.pmart.cdc.outbound.application.TransferLabels.value(t.trfId(), t.trfVersion()))
         .mfcId(t.mfcId())
         .state(t.state())
         .deadlineMeaning(t.deadlineMeaning())

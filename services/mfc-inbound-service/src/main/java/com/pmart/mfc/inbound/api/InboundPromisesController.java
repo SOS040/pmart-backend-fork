@@ -242,6 +242,7 @@ public class InboundPromisesController implements InboundPromisesApi {
                 s -> {
                   var i = new InboundPromisePackagesInner();
                   i.setLpn(s.lpn());
+                  i.setParentLpn(s.parentLpn());
                   i.setSku(s.sku());
                   i.setLotId(s.lot());
                   i.setQty(s.qty());

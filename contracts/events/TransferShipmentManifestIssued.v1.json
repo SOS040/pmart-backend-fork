@@ -55,6 +55,36 @@
             },
             "issuedAt": {
               "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "containers": {
+              "type": "array",
+              "description": "(2026-11-26 CO-2) 출발한 그릇 단위(RT 롤테이너·PLT 팔레트) — 박스는 lines[].parentLpn 으로 소속",
+              "items": {
+                "type": "object",
+                "required": [
+                  "lpn",
+                  "unitType"
+                ],
+                "properties": {
+                  "lpn": {
+                    "type": "string"
+                  },
+                  "unitType": {
+                    "type": "string",
+                    "enum": [
+                      "PLT",
+                      "RT"
+                    ]
+                  }
+                }
+              }
+            },
+            "labelValue": {
+              "type": "string",
+              "description": "(2026-11-26 CO-1) 송장 라벨 스캔 값 TRF:{trfId}:{trfVersion}"
+            },
+            "trfVersion": {
+              "type": "integer"
             }
           },
           "additionalProperties": true
