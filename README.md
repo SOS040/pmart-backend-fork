@@ -82,11 +82,3 @@ flowchart LR
 | 전소영 | OMS | AI 상담(RAG) |
 
 앱·웹 담당까지 포함한 전체 팀 구성은 조직 페이지 [code-and-pick](https://github.com/code-and-pick#팀)에 있다.
-
----
-
-<div align="center">
-
-지도: 서성원 훈련 교사
-
-</div>
