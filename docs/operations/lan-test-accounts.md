@@ -1,4 +1,4 @@
-# LAN 시험 계정 (직원) — 2026-11-16 확인
+# LAN 시험 계정 (직원) — 2026-11-16 확인, 2026-11-26 센터 값 갱신
 
 LAN 시험에 쓰는 직원 계정과 역할·센터를 한곳에 모은 목록이다. **LAN 전용 — 운영 금지.** 비밀번호는 여기에 적지 않는다(파일 위치만).
 
@@ -17,15 +17,18 @@ LAN 시험에 쓰는 직원 계정과 역할·센터를 한곳에 모은 목록�
 | `claude-mfc-sup` | `MFC_SUPERVISOR` | `MFC-BJG-01`·`MFC-MOKPO-01`·`MFC-SEJ-01`·`MFC-CHC-01`·`MFC-BNG-01`(2026-11-24 다섯 센터 — 사용자 "claude-mfc-sup 를 다섯 센터로 넓혀") | `keycloak-claude-mfc-sup-password` | MFC 백오피스(:8445), 센터 관리자 시험 — 직원 번호 `OP-88399b05-87b7-48e2-aa33-229a3ab36f93`(2026-11-16 로그인 확인) |
 | `claude-mfc-wrk` | `MFC_WORKER` | `MFC-BJG-01`·`MFC-MOKPO-01`·`MFC-SEJ-01`·`MFC-CHC-01`·`MFC-BNG-01`(2026-11-26 토큰으로 확인 — 옛 `MFC-SEED-01` 은 R-46 에서 `MFC-BJG-01`) | `keycloak-claude-mfc-wrk-password` | 시뮬레이터 작업자·`mfc_e2e.py` — 직원 번호 `OP-d696814f-4cd7-4263-86a6-032b591e5b42` |
 | `claude-mfc-sup-mk` | `MFC_SUPERVISOR` | `MFC-MOKPO-01` | `keycloak-claude-mfc-sup-mk-password` | 2호점 목포 MFC 센터 관리자(R-39, 2026-11-22 인사 등록·권한 승인 `AP-c2214661-…`) — 직원 번호 `OP-d9fbce5f-26ba-47aa-9cd2-fafd52ca8916`, 메일 `claude-mfc-sup-mk@pmart.com` |
+| `claude-mfc-sup-sj` | `MFC_SUPERVISOR` | `MFC-SEJ-01` | `keycloak-claude-mfc-sup-sj-password` | 3호점 세종 센터 관리자 — 직원 번호 `OP-9d128a83-f87a-4a81-88be-19cc240c4faa`(2026-11-26 토큰 확인) |
+| `claude-mfc-sup-cc` | `MFC_SUPERVISOR` | `MFC-CHC-01` | `keycloak-claude-mfc-sup-cc-password` | 4호점 춘천 센터 관리자 — 직원 번호 `OP-7b4c7cc6-c83f-4147-aae5-ae1d72925c74`(2026-11-26 토큰 확인) |
+| `claude-mfc-sup-bn` | `MFC_SUPERVISOR` | `MFC-BNG-01` | `keycloak-claude-mfc-sup-bn-password` | 5호점 부산남구 센터 관리자 — 직원 번호 `OP-df2a42c2-3a9a-4d9b-a822-1dce88f6420f`(2026-11-26 토큰 확인) |
 | `seed-approver` | Seed.java 승인 역할들(`CENTER_MASTER_APPROVER` 등) | — | `keycloak-seed-approver-password` | `deploy/lan/seed/Seed.java`·R-39 목포 센터 생성 승인. 2026-11-22 비밀번호 파일을 새로 만들었다(그 전 값은 파일 없이 실행마다 바뀌던 것) |
 
 - 실제 직원 계정(예: 인사팀 `heeji`)은 시험용이 아니다 — 시험에 쓰지 않는다.
 - 배송 쪽 직원 시험 계정은 따로 없다(필요하면 인사팀 등록으로 만든다).
 
-## 2. MFC 시험 작업자 70명 — 센터 `MFC-SEED-01`
+## 2. MFC 시험 작업자 70명 — 센터 `MFC-BJG-01`(1호점 부산진구 — 옛 ID `MFC-SEED-01`, R-46 2026-11-24)
 
 - 만든 스크립트: `deploy/lan/seed/mfc_test_workers.py`(2026-11-13, 다시 돌려도 안전 — 있는 것은 건너뜀, `--check` 는 상태만). 인사 등록(hr-service) → 계정 발급 → 공용 비밀번호 → MFC 작업자 업무(센터 관리자가 지정).
-- 아이디 = 메일 주소 `mfcw-<분야>-NN@pmart.com`. 역할 `MFC_WORKER` · 권한 센터 `MFC-SEED-01`(소속 센터라 자동 승인).
+- 아이디 = 메일 주소 `mfcw-<분야>-NN@pmart.com`. 역할 `MFC_WORKER` · 권한 센터 `MFC-BJG-01`(소속 센터라 자동 승인 — 승인 기록 grant, 2026-11-26 `mfcw-pp-01`·`mfcw-rtn-10` 관리자 조회로 확인: effectiveRoles MFC_WORKER·effectiveCenters MFC-BJG-01).
 - 비밀번호: 70명 **공용** — 파일 `keycloak-mfc-test-workers-password`.
 - 고용 형태: 번호 **홀수 = 정규직, 짝수 = 알바**(계약 종료 2026-12-31). 일일크루는 하루만 유효해 시험 계정으로 두지 않았다.
 
