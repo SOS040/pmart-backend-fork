@@ -553,6 +553,61 @@ class DraftFlowIT extends PostgresKafkaContainerSupport {
     return Map.of("date", TOMORROW, "start", start, "end", end);
   }
 
+  /**
+   * 0.26.0 수량 행사(ADR-0090): 품목 quantity 는 유상 수량, pricing 견적이 무료분을 더한 총 수량을 돌려주면 재고는 총 수량으로 본다(무료분을
+   * 줄여 주지 않음 — A3), 초안 줄은 총 수량·유상·무료·행사, 무게도 총 수량.
+   */
+  @Test
+  void quantityOfferChecksStockForTotalAndKeepsPaidAndFree() {
+    String first = TestJwt.customer(FIRST);
+    deps.stubFor(
+        WireMock.post(urlPathEqualTo("/api/v1/internal/quotes"))
+            .atPriority(1)
+            .withRequestBody(
+                matchingJsonPath("$.items[?(@.sku == 'E-00000001' && @.quantity == 3)]"))
+            .willReturn(
+                json(
+                    Map.of(
+                        "quoteId",
+                        "Q-offer",
+                        "priceVersion",
+                        4,
+                        "itemAmount",
+                        5_700,
+                        "lines",
+                        List.of(
+                            Map.of(
+                                "sku", "E-00000001",
+                                "quantity", 6,
+                                "paidQuantity", 3,
+                                "freeQuantity", 3,
+                                "offerPromotionId", "PRM-11",
+                                "unitPrice", 1_900,
+                                "lineAmount", 11_400,
+                                "discountShare", 5_700)),
+                        "calculatedAt",
+                        Instant.now().toString()))));
+    // 가용 5 < 총 6 → 막힘(유상 3 만 보면 통과했을 것)
+    stock(avail("E-00000001", 5, true));
+    Res d =
+        create(first, draft("PI-" + UUID.randomUUID(), "E-00000001", 3, "ADR-IN", "SINGLE", null));
+    assertThat(d.status()).as(d.body().toString()).isEqualTo(422);
+    assertThat(d.body().path("code").asString()).isEqualTo("INSUFFICIENT_STOCK");
+    assertThat(d.body().path("details").path(0).path("reason").asString())
+        .isEqualTo("requestedQty=6;availableQty=5");
+    // 가용 6 → 초안: 줄은 총 6(유상 3·무료 3), 할인 분담에 무료분
+    stock(avail("E-00000001", 6, true));
+    d = create(first, draft("PI-" + UUID.randomUUID(), "E-00000001", 3, "ADR-IN", "SINGLE", null));
+    assertThat(d.status()).as(d.body().toString()).isEqualTo(201);
+    JsonNode line = d.body().path("lines").path(0);
+    assertThat(line.path("quantity").asInt()).isEqualTo(6);
+    assertThat(line.path("paidQuantity").asInt()).isEqualTo(3);
+    assertThat(line.path("freeQuantity").asInt()).isEqualTo(3);
+    assertThat(line.path("offerPromotionId").asString()).isEqualTo("PRM-11");
+    assertThat(line.path("discountShare").asInt()).isEqualTo(5_700);
+    assertThat(d.body().path("quote").path("itemAmount").asInt()).isEqualTo(5_700);
+  }
+
   @Test
   void insufficientStockBlocksDraftButUnknownDoesNot() {
     String first = TestJwt.customer(FIRST);

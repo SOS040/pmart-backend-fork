@@ -1069,7 +1069,9 @@ public class OrderService {
               0,
               l.productName(), // 초안 때 뜬 사본(BR-35) — 확정 때 다시 조회하지 않는다
               l.optionLabel(),
-              0));
+              0,
+              l.free(), // ADR-0090: 수량 행사 무료분(quantity 에 포함)
+              l.free() > 0 ? l.offerPromotionId() : null));
     }
     return out;
   }

@@ -303,7 +303,11 @@ public class OrdersController implements OrdersApi {
                             // BR-71(0.19.0) — 지금 대표 사진
                             .imageUrl(l.productId() == null ? null : images.get(l.productId()))
                             .quantity(l.quantity())
-                            .lineAmount((int) l.lineAmount()))
+                            .lineAmount((int) l.lineAmount())
+                            // 0.26.0 ADR-0090 수량 행사
+                            .paidQuantity(l.quantity() - l.freeQuantity())
+                            .freeQuantity(l.freeQuantity())
+                            .offerPromotionId(l.offerPromotionId()))
                 .toList());
   }
 
@@ -325,7 +329,11 @@ public class OrdersController implements OrdersApi {
         .handedOverQty(l.handedOverQty())
         .cancelledBeforeShipQty(l.cancelledBeforeShipQty())
         .deliveredQty(l.deliveredQty())
-        .returnedQty(l.returnedQty());
+        .returnedQty(l.returnedQty())
+        // 0.26.0 ADR-0090 수량 행사
+        .paidQuantity(l.quantity() - l.freeQuantity())
+        .freeQuantity(l.freeQuantity())
+        .offerPromotionId(l.offerPromotionId());
   }
 
   private static OffsetDateTime time(Instant i) {

@@ -115,7 +115,59 @@ public class OrderStore {
       int returnedQty,
       @Nullable String productName,
       @Nullable String optionLabel,
-      int reshippedQty) {}
+      int reshippedQty,
+      // ADR-0090(0.26.0): quantity 중 수량 행사 무료분·행사
+      int freeQuantity,
+      @Nullable String offerPromotionId) {
+
+    public LineRow(
+        String orderLineId,
+        String orderId,
+        int lineNo,
+        @Nullable String cartItemId,
+        String sku,
+        @Nullable String productId,
+        int unitsPerSku,
+        int quantity,
+        long unitPrice,
+        long lineAmount,
+        long discountShare,
+        int weightG,
+        int originalQty,
+        int unfulfilledQty,
+        int handedOverQty,
+        int cancelledBeforeShipQty,
+        int deliveredQty,
+        int returnedQty,
+        @Nullable String productName,
+        @Nullable String optionLabel,
+        int reshippedQty) {
+      this(
+          orderLineId,
+          orderId,
+          lineNo,
+          cartItemId,
+          sku,
+          productId,
+          unitsPerSku,
+          quantity,
+          unitPrice,
+          lineAmount,
+          discountShare,
+          weightG,
+          originalQty,
+          unfulfilledQty,
+          handedOverQty,
+          cancelledBeforeShipQty,
+          deliveredQty,
+          returnedQty,
+          productName,
+          optionLabel,
+          reshippedQty,
+          0,
+          null);
+    }
+  }
 
   /** 목록 한 줄(주문 요약). first* = 대표 상품(첫 주문행, 0.12.0) — 행이 없으면 firstSku null. */
   public record Summary(
@@ -142,7 +194,9 @@ public class OrderStore {
       @Nullable String productName,
       @Nullable String optionLabel,
       int quantity,
-      long lineAmount) {}
+      long lineAmount,
+      int freeQuantity,
+      @Nullable String offerPromotionId) {}
 
   /**
    * 고객 목록 조건(0.12.0). confirmedFrom 이상·confirmedToExclusive 미만, nameQuery 는 소문자 LIKE 패턴(이미 escape —
@@ -265,8 +319,9 @@ public class OrderStore {
           "INSERT INTO customer_order_line (order_line_id, order_id, line_no, cart_item_id, sku,"
               + " product_id, units_per_sku, quantity, unit_price, line_amount, discount_share,"
               + " weight_g, original_qty, unfulfilled_qty, handed_over_qty,"
-              + " cancelled_before_ship_qty, delivered_qty, returned_qty, product_name, option_label)"
-              + " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+              + " cancelled_before_ship_qty, delivered_qty, returned_qty, product_name, option_label,"
+              + " free_quantity, offer_promotion_id)"
+              + " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
           l.orderLineId(),
           l.orderId(),
           l.lineNo(),
@@ -286,7 +341,9 @@ public class OrderStore {
           l.deliveredQty(),
           l.returnedQty(),
           l.productName(),
-          l.optionLabel());
+          l.optionLabel(),
+          l.freeQuantity(),
+          l.offerPromotionId());
     }
     return o.withOrderNumber(number);
   }
@@ -464,7 +521,9 @@ public class OrderStore {
                 rs.getInt("returned_qty"),
                 rs.getString("product_name"),
                 rs.getString("option_label"),
-                rs.getInt("reshipped_qty")),
+                rs.getInt("reshipped_qty"),
+                rs.getInt("free_quantity"),
+                rs.getString("offer_promotion_id")),
         orderId);
   }
 
@@ -554,7 +613,7 @@ public class OrderStore {
     args.add(perOrder);
     jdbc.query(
         "SELECT order_id, order_line_id, product_id, sku, product_name, option_label, quantity,"
-            + " line_amount FROM (SELECT l.*, ROW_NUMBER() OVER (PARTITION BY l.order_id"
+            + " line_amount, free_quantity, offer_promotion_id FROM (SELECT l.*, ROW_NUMBER() OVER (PARTITION BY l.order_id"
             + " ORDER BY l.line_no) AS rn FROM customer_order_line l WHERE l.order_id IN ("
             + in
             + ")) t WHERE rn <= ? ORDER BY order_id, rn",
@@ -568,7 +627,9 @@ public class OrderStore {
                   rs.getString("product_name"),
                   rs.getString("option_label"),
                   rs.getInt("quantity"),
-                  rs.getLong("line_amount"));
+                  rs.getLong("line_amount"),
+                  rs.getInt("free_quantity"),
+                  rs.getString("offer_promotion_id"));
           out.computeIfAbsent(l.orderId(), k -> new ArrayList<>()).add(l);
         },
         args.toArray());

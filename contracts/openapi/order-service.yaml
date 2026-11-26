@@ -1,8 +1,11 @@
 openapi: 3.1.0
 info:
   title: order-service
-  version: 0.25.0
+  version: 0.26.0
   description: |
+    0.26.0(2026-11-26, ADR-0090 수량 행사 1+1·2+1): 주문 초안 품목 `quantity` 는 **유상 수량**(고객이 고른 수). 수량 행사가 걸리면 pricing 견적이 무료 수량을 더해
+      초안·주문 줄 `quantity` = **총 수량**(재고 확인·예약·피킹·무게·구매 한도는 이 수), `paidQuantity`·`freeQuantity`·`offerPromotionId` 따로, 무료분은 `discountShare` 에 들어 있다.
+      재고가 총 수량보다 적으면 다른 품절과 같이 422 `INSUFFICIENT_STOCK`(무료분을 줄여 주지 않음 — A3). 행사가 없는 줄은 paid = quantity, free 0.
     0.25.0(2026-11-26, O-12 고객별 구매 요약 — 사용자 "고객별 남은거 해줘"): 직원(CS_AGENT·OPERATOR_ADMIN) `GET /orders/metrics/customer-summaries?customerIds=`(최대 50명 —
       주문 수·누적 금액·첫·마지막 구매·최근 3개월 금액, O-13 의 "고객 한 명 칸" 포함), `GET /orders/metrics/customer-ids?lastOrderFrom=&lastOrderTo=`(마지막 구매일 기간으로 고객 찾기).
       "산 것"·금액은 0.24.0 과 같은 정의(취소·만료 빼고, 줄 금액 − 할인 분담, 배달팁·봉투 빼고, **환불은 빼지 않음**). 고객 분류 이름은 bff 가 붙인다.
@@ -1128,7 +1131,7 @@ components:
             properties:
               cartItemId: { type: string }
               sku: { $ref: '_common.yaml#/components/schemas/Sku' }
-              quantity: { $ref: '_common.yaml#/components/schemas/Quantity' }
+              quantity: { $ref: '_common.yaml#/components/schemas/Quantity', description: '유상 수량(0.26.0 — 수량 행사 무료분은 서버가 더한다)' }
         shoppingAddressId: { type: string }
         expectedMfcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
         deliveryMode: { type: string, enum: [SINGLE, BUNDLED, SCHEDULED] }
@@ -1187,8 +1190,11 @@ components:
         productId: { type: string }
         productName: { type: [string, 'null'], description: 고객용 상품명 사본(BR-35). 조회 실패면 null }
         optionLabel: { type: [string, 'null'], description: 옵션 라벨 사본. 단일 옵션 상품은 null 일 수 있다 }
-        quantity: { $ref: '_common.yaml#/components/schemas/Quantity' }
-        discountShare: { $ref: '_common.yaml#/components/schemas/Money', x-added-in: '2026-11-21', description: '0.18.0 — 기간 할인 + 쿠폰 안분' }
+        quantity: { $ref: '_common.yaml#/components/schemas/Quantity', description: '총 수량(0.26.0 — 수량 행사 무료분 포함)' }
+        paidQuantity: { type: integer, x-added-in: '2026-11-26', description: '0.26.0 ADR-0090 — 유상 수량(quantity − freeQuantity)' }
+        freeQuantity: { type: integer, x-added-in: '2026-11-26', description: '0.26.0 — 수량 행사 무료 수량(1+1·2+1, 없으면 0). quantity 에 들어 있다' }
+        offerPromotionId: { type: [string, 'null'], x-added-in: '2026-11-26', description: '0.26.0 — 무료 수량을 준 수량 행사' }
+        discountShare: { $ref: '_common.yaml#/components/schemas/Money', x-added-in: '2026-11-21', description: '0.18.0 — 기간 할인 + 쿠폰 안분(0.26.0 수량 행사 무료분 포함)' }
         unitPrice: { $ref: '_common.yaml#/components/schemas/Money' }
         lineAmount: { $ref: '_common.yaml#/components/schemas/Money' }
         weightG: { type: integer }
@@ -1336,6 +1342,9 @@ components:
         cancelledBeforeShipQty: { type: integer }
         deliveredQty: { type: integer }
         returnedQty: { type: integer, description: '반품 완료 수량(0.11.2 — claim 반품 종결로 채워짐, O-7)' }
+        paidQuantity: { type: integer, x-added-in: '2026-11-26', description: '0.26.0 ADR-0090 — 유상 수량(quantity − freeQuantity)' }
+        freeQuantity: { type: integer, x-added-in: '2026-11-26', description: '0.26.0 — 수량 행사 무료 수량(1+1·2+1, 없으면 0). quantity 에 들어 있다' }
+        offerPromotionId: { type: [string, 'null'], x-added-in: '2026-11-26', description: '0.26.0 — 무료 수량을 준 수량 행사' }
     Shipment:
       type: object
       description: '(0.15.0) 고객 주문의 배송 — 배차로 배송이 생긴 뒤부터 채운다(그 전에는 주문 shipments 가 빈 배열). deliveryId 로 배송 현황(tracking /deliveries/{deliveryId}/eta·stream)을 연다. lines 는 첫 출고(<orderId>-S1)만 주문 줄 전체, 재발송 출고는 비어 있다. weightG·eta 는 채우지 않는다'
@@ -1409,8 +1418,12 @@ components:
         productName: { type: [string, 'null'], description: '주문 당시 상품명 사본(BR-35). 없으면 null — 앱은 sku 로 대신' }
         optionLabel: { type: [string, 'null'], description: 옵션 라벨의 주문 당시 사본(BR-35) }
         imageUrl: { type: [string, 'null'], description: '(0.19.0 BR-71) 지금 상품의 대표 사진. 게시 안 됨·조회 실패면 null' }
-        quantity: { type: integer, description: 주문 수량 }
+        quantity: { type: integer, description: '주문 수량(0.26.0 — 수량 행사 무료분 포함)' }
         lineAmount: { type: integer, description: '줄 금액(원, 단가 × 주문 수량 — 할인 분담 전)' }
+        paidQuantity: { type: integer, x-added-in: '2026-11-26', description: '0.26.0 ADR-0090 — 유상 수량(quantity − freeQuantity)' }
+        freeQuantity: { type: integer, x-added-in: '2026-11-26', description: '0.26.0 — 수량 행사 무료 수량(1+1·2+1, 없으면 0). quantity 에 들어 있다' }
+        offerPromotionId: { type: [string, 'null'], x-added-in: '2026-11-26', description: '0.26.0 — 무료 수량을 준 수량 행사' }
+
     OrderRepresentativeItem:
       type: object
       x-added-in: '2026-11-18'

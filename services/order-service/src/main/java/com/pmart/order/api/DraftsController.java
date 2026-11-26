@@ -288,7 +288,11 @@ public class DraftsController implements DraftsApi {
                             .unitPrice((int) l.unitPrice())
                             .lineAmount((int) l.lineAmount())
                             .discountShare((int) l.discountShare())
-                            .weightG(l.weightG()))
+                            .weightG(l.weightG())
+                            // 0.26.0 ADR-0090 수량 행사
+                            .paidQuantity(l.quantity() - l.free())
+                            .freeQuantity(l.free())
+                            .offerPromotionId(l.offerPromotionId()))
                 .toList())
         .delivery(
             new DraftDelivery()

@@ -39,7 +39,18 @@ public class Upstreams {
       String saleState,
       int unitsPerSku) {}
 
-  public record PricedLine(String sku, long unitPrice, long lineAmount, long discountShare) {}
+  /**
+   * 견적 줄. quantity = 총 수량(0.26.0 ADR-0090 — 수량 행사 무료분 포함, pricing 0.4.0 전 견적은 요청 수량),
+   * freeQuantity·offerPromotionId 는 수량 행사가 있을 때만.
+   */
+  public record PricedLine(
+      String sku,
+      long unitPrice,
+      long lineAmount,
+      long discountShare,
+      int quantity,
+      int freeQuantity,
+      @Nullable String offerPromotionId) {}
 
   /** 견적 쿠폰 결과(pricing 0.2.0). */
   public record PricedCoupon(
@@ -327,7 +338,12 @@ public class Upstreams {
               l.path("sku").asString(),
               l.path("unitPrice").asLong(),
               l.path("lineAmount").asLong(),
-              l.path("discountShare").asLong(0)));
+              l.path("discountShare").asLong(0),
+              l.path("quantity").asInt(qty.getOrDefault(l.path("sku").asString(), 0)),
+              l.path("freeQuantity").asInt(0),
+              l.hasNonNull("offerPromotionId") && l.path("freeQuantity").asInt(0) > 0
+                  ? l.get("offerPromotionId").asString()
+                  : null));
     }
     JsonNode c = r.path("coupon");
     PricedCoupon coupon =

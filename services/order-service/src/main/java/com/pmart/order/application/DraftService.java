@@ -69,7 +69,43 @@ public class DraftService {
       @Nullable String productName,
       @Nullable String optionLabel,
       // ADR-0082(0.18.0): 기간 할인 + 쿠폰 안분. 그 전 초안 JSON 은 0
-      long discountShare) {}
+      long discountShare,
+      // ADR-0090(0.26.0): quantity = 총 수량(무료분 포함), 무료 수량·행사. 그 전 초안 JSON 은 null(무료 0)
+      @Nullable Integer freeQuantity,
+      @Nullable String offerPromotionId) {
+
+    public Line(
+        String cartItemId,
+        String sku,
+        String productId,
+        int quantity,
+        long unitPrice,
+        long lineAmount,
+        int weightG,
+        @Nullable Integer unitsPerSku,
+        @Nullable String productName,
+        @Nullable String optionLabel,
+        long discountShare) {
+      this(
+          cartItemId,
+          sku,
+          productId,
+          quantity,
+          unitPrice,
+          lineAmount,
+          weightG,
+          unitsPerSku,
+          productName,
+          optionLabel,
+          discountShare,
+          null,
+          null);
+    }
+
+    public int free() {
+      return freeQuantity == null ? 0 : freeQuantity;
+    }
+  }
 
   /**
    * @param shippingAddress 주문 당시 배송지·수령 연락처 사본(BR-37). 2026-11-02 이전 초안은 null(JSON 에 없음)
@@ -164,6 +200,19 @@ public class DraftService {
         .orElseThrow(() -> new PmartException(ErrorCode.FORBIDDEN, "로그인한 고객만 주문할 수 있습니다."));
   }
 
+  /** 구매 한도(product) — 넘으면 422 QUANTITY_LIMIT_EXCEEDED. */
+  private void purchaseLimit(String accountId, Map<String, Integer> units) {
+    JsonNode violation = upstreams.purchaseLimitViolation(accountId, units);
+    if (violation != null) {
+      throw new PmartException(
+          "QUANTITY_LIMIT_EXCEEDED",
+          HttpStatus.UNPROCESSABLE_CONTENT,
+          "같은 상품은 최대 " + violation.path("limitUnits").asInt() + "개까지 살 수 있습니다.",
+          false,
+          List.of(new PmartException.Detail(violation.path("baseProductId").asString(), "LIMIT")));
+    }
+  }
+
   public View create(String accountId, String requestId, String sourceSystem, Request req) {
     Instant now = clock.instant();
     // 같은 구매 의도의 유효 초안 → 그대로(새 견적·새 초안을 만들지 않는다)
@@ -214,13 +263,28 @@ public class DraftService {
     // 예약과
     // 같은 소비기한 적격 판정이라 기준일도 예약과 같게 — 예약 주문은 도착 예정일(orchestration promisedDate), 아니면 오늘.
     // 조회 불명·판정 불가(null)는 막지 않는다(결제 단계 재고 예약이 최종).
+    purchaseLimit(accountId, qty);
+    // 10kg 넘는 단일 상품은 수량과 상관없이 먼저 거절(견적 전) — 배송 건수는 견적 뒤 총 수량으로
+    List<int[]> paidWeights = new ArrayList<>();
+    qty.forEach((sku, q) -> paidWeights.add(new int[] {skus.get(sku).weightG(), q}));
+    if (OrderRules.plannedShipments(paidWeights) < 0) {
+      throw reject("WEIGHT_UNSPLITTABLE", "한 개가 10kg 을 넘는 상품은 배송할 수 없습니다.");
+    }
     LocalDate stockDate =
         OrderRules.SCHEDULED.equals(req.deliveryMode()) && req.arrivalWindow() != null
             ? req.arrivalWindow().date()
             : null;
+    // 견적 먼저(ADR-0090): 수량 행사 무료분까지 더한 총 수량으로 재고·한도·무게를 본다(무료분을 줄여 주지 않음 — A3)
+    Upstreams.Priced priced = upstreams.quote(accountId, mfcId, qty, blankToNull(req.couponId()));
+    Map<String, Integer> units = new LinkedHashMap<>();
+    qty.forEach(
+        (sku, q) -> {
+          Upstreams.PricedLine p = priced.lines().get(sku);
+          units.put(sku, p == null || p.quantity() < q ? q : p.quantity());
+        });
     List<PmartException.Detail> shortages =
         OrderRules.stockShortages(
-                qty, upstreams.availability(mfcId, List.copyOf(qty.keySet()), stockDate))
+                units, upstreams.availability(mfcId, List.copyOf(qty.keySet()), stockDate))
             .stream()
             .map(x -> new PmartException.Detail(x.sku(), x.reason()))
             .toList();
@@ -232,18 +296,13 @@ public class DraftService {
           false,
           shortages);
     }
-    JsonNode violation = upstreams.purchaseLimitViolation(accountId, qty);
-    if (violation != null) {
-      throw new PmartException(
-          "QUANTITY_LIMIT_EXCEEDED",
-          HttpStatus.UNPROCESSABLE_CONTENT,
-          "같은 상품은 최대 " + violation.path("limitUnits").asInt() + "개까지 살 수 있습니다.",
-          false,
-          List.of(new PmartException.Detail(violation.path("baseProductId").asString(), "LIMIT")));
+    if (!units.equals(qty)) {
+      // ADR-0090: 수량 행사 무료분까지 더한 총 수량으로 한도를 다시 본다
+      purchaseLimit(accountId, units);
     }
     List<int[]> weights = new ArrayList<>();
     int totalWeight = 0;
-    for (Map.Entry<String, Integer> e : qty.entrySet()) {
+    for (Map.Entry<String, Integer> e : units.entrySet()) {
       int w = skus.get(e.getKey()).weightG();
       weights.add(new int[] {w, e.getValue()});
       totalWeight += w * e.getValue();
@@ -252,7 +311,6 @@ public class DraftService {
     if (shipments < 0) {
       throw reject("WEIGHT_UNSPLITTABLE", "한 개가 10kg 을 넘는 상품은 배송할 수 없습니다.");
     }
-    Upstreams.Priced priced = upstreams.quote(accountId, mfcId, qty, blankToNull(req.couponId()));
     String firstPurchase =
         upstreams.firstPurchaseCandidate(accountId) ? "EXPECTED" : "NOT_ELIGIBLE";
     OrderRules.Amounts amounts =
@@ -299,19 +357,22 @@ public class DraftService {
       Upstreams.PricedLine p = priced.lines().get(i.sku());
       Upstreams.Sku s = skus.get(i.sku());
       Upstreams.ContentName name = upstreams.contentName(s.productId(), i.sku());
+      int total = units.get(i.sku());
       lines.add(
           new Line(
               i.cartItemId(),
               i.sku(),
               s.productId(),
-              i.quantity(),
+              total,
               p == null ? 0 : p.unitPrice(),
               p == null ? 0 : p.lineAmount(),
-              s.weightG() * i.quantity(),
+              s.weightG() * total,
               s.unitsPerSku(),
               name.productName(),
               name.optionLabel(),
-              p == null ? 0 : p.discountShare()));
+              p == null ? 0 : p.discountShare(),
+              total - i.quantity(),
+              p == null ? null : p.offerPromotionId()));
     }
     Snapshot snapshot =
         new Snapshot(
