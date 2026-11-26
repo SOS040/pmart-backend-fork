@@ -96,6 +96,7 @@ public class InboundPromises {
   private final EventEnvelopeCodec codec;
   private final TransactionTemplate tx;
   private final Clock clock;
+  private final TransitClosures closures;
 
   public InboundPromises(
       InboundPromiseStore store,
@@ -105,7 +106,8 @@ public class InboundPromises {
       EventPublisher events,
       EventEnvelopeCodec codec,
       PlatformTransactionManager txm,
-      Clock clock) {
+      Clock clock,
+      TransitClosures closures) {
     this.store = store;
     this.tasks = tasks;
     this.inventory = inventory;
@@ -114,6 +116,7 @@ public class InboundPromises {
     this.codec = codec;
     this.tx = new TransactionTemplate(txm);
     this.clock = clock;
+    this.closures = closures;
   }
 
   // ---------- 원천 사건 ----------
@@ -420,6 +423,7 @@ public class InboundPromises {
                 () -> capture(trfId, expectedVersion, c, me))
             .value();
     post(rid);
+    closures.send(trfId); // 자동 종결이 생겼으면 바로 CDC 에(실패하면 주기 작업이 다시)
     ReceiptRow r = store.findReceipt(rid).orElseThrow();
     Promise x = find(trfId);
     CommandStatus st =
@@ -534,6 +538,8 @@ public class InboundPromises {
               Promise x = store.lock(r.trfId()).orElseThrow();
               x.state = "TIN_POSTED";
               touch(x, null);
+              // MI-5: 수령은 TRF 하나에 한 번 — 재고 반영 = 더 받을 것 없음(CDC 에 알림은 트랜잭션 밖 주기 작업)
+              closures.closeAfterPosting(x, now);
               if (!r.discrepancies().isEmpty()) {
                 publishDiscrepancy(x, r, now);
               }

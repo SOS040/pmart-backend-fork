@@ -1,0 +1,131 @@
+package com.pmart.mfc.inbound.infrastructure;
+
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Timestamp;
+import java.time.Instant;
+import java.util.Collection;
+import java.util.List;
+import java.util.Optional;
+import org.jspecify.annotations.Nullable;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
+import org.springframework.stereotype.Repository;
+
+/** CDC 이관 입고 종결(MI-5, V15 transit_closure) — TRF 하나에 한 줄, CDC 알림 재시도 상태. */
+@Repository
+public class TransitClosureStore {
+
+  /** 종결 한 줄. */
+  public record Closure(
+      String trfId,
+      String mfcId,
+      String fromCdc,
+      String departureId,
+      String kind,
+      Instant closedAt,
+      String closedBy,
+      @Nullable String reason,
+      @Nullable Instant notifiedAt,
+      @Nullable Integer unreconciledQty,
+      int attempts,
+      @Nullable String lastError) {}
+
+  private final JdbcTemplate jdbc;
+  private final NamedParameterJdbcTemplate named;
+
+  public TransitClosureStore(JdbcTemplate jdbc) {
+    this.jdbc = jdbc;
+    this.named = new NamedParameterJdbcTemplate(jdbc);
+  }
+
+  /** 처음이면 넣고 true — 이미 종결이면 false(그대로). */
+  public boolean insert(
+      String trfId,
+      String mfcId,
+      String fromCdc,
+      String departureId,
+      String kind,
+      Instant closedAt,
+      String closedBy,
+      @Nullable String reason) {
+    return jdbc.update(
+            "INSERT INTO transit_closure (trf_id, mfc_id, from_cdc, departure_id, kind, closed_at,"
+                + " closed_by, reason, next_try_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT"
+                + " (trf_id) DO NOTHING",
+            trfId,
+            mfcId,
+            fromCdc,
+            departureId,
+            kind,
+            Timestamp.from(closedAt),
+            closedBy,
+            reason,
+            Timestamp.from(closedAt))
+        == 1;
+  }
+
+  public Optional<Closure> find(String trfId) {
+    return jdbc.query("SELECT * FROM transit_closure WHERE trf_id = ?", this::row, trfId).stream()
+        .findFirst();
+  }
+
+  public List<Closure> findAll(Collection<String> trfIds) {
+    if (trfIds.isEmpty()) {
+      return List.of();
+    }
+    return named.query(
+        "SELECT * FROM transit_closure WHERE trf_id IN (:ids)",
+        new MapSqlParameterSource("ids", trfIds),
+        this::row);
+  }
+
+  /** CDC 에 아직 알리지 못했고 다시 보낼 때가 된 것. */
+  public List<String> due(Instant now, int limit) {
+    return jdbc.queryForList(
+        "SELECT trf_id FROM transit_closure WHERE notified_at IS NULL AND next_try_at <= ? ORDER BY"
+            + " next_try_at LIMIT ?",
+        String.class,
+        Timestamp.from(now),
+        limit);
+  }
+
+  public void notified(String trfId, @Nullable Integer unreconciled, Instant now) {
+    jdbc.update(
+        "UPDATE transit_closure SET notified_at = ?, unreconciled_qty = ?, attempts = attempts + 1,"
+            + " last_error = NULL, next_try_at = NULL WHERE trf_id = ? AND notified_at IS NULL",
+        Timestamp.from(now),
+        unreconciled,
+        trfId);
+  }
+
+  /** 실패 — nextTry 가 null 이면 다시 보내지 않는다(CDC 가 내용으로 거절). */
+  public void failed(String trfId, String error, @Nullable Instant nextTry) {
+    jdbc.update(
+        "UPDATE transit_closure SET attempts = attempts + 1, last_error = ?, next_try_at = ? WHERE"
+            + " trf_id = ? AND notified_at IS NULL",
+        error.length() > 1000 ? error.substring(0, 1000) : error,
+        nextTry == null ? null : Timestamp.from(nextTry),
+        trfId);
+  }
+
+  private Closure row(ResultSet rs, int i) throws SQLException {
+    Timestamp n = rs.getTimestamp("notified_at");
+    int u = rs.getInt("unreconciled_qty");
+    Integer unreconciled = rs.wasNull() ? null : u;
+    return new Closure(
+        rs.getString("trf_id"),
+        rs.getString("mfc_id"),
+        rs.getString("from_cdc"),
+        rs.getString("departure_id"),
+        rs.getString("kind"),
+        rs.getTimestamp("closed_at").toInstant(),
+        rs.getString("closed_by"),
+        rs.getString("reason"),
+        n == null ? null : n.toInstant(),
+        unreconciled,
+        rs.getInt("attempts"),
+        rs.getString("last_error"));
+  }
+}

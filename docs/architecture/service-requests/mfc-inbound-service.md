@@ -64,4 +64,4 @@
 - **CDC 쪽(구현, cdc-inventory 0.14.0)**: `POST /internal/transit-closures` `{trfId, departureId, mfcId, closedAt, sourceRef?}`(Idempotency-Key·X-Source-System, TRF 하나에 한 번 — 같은 본문 그대로, 다른 본문 409 TRANSIT_CLOSURE_CONFLICT, CDC 출발 전 404 DEPARTURE_NOT_POSTED). 이 기록이 있어야 운영자가 `POST /cdcs/{cdcId}/transit-losses` 로 남은 미정산을 승인 손실로 닫는다. 종결 뒤 늦게 온 수령도 그대로 대사한다.
 - **필요한 것**: mfc-inbound 가 CDC 이관(TRF) 입고 예정을 "더 받을 것 없음"으로 끝낼 때(전량 수령·검수 끝, 또는 관리자가 나머지 미도착을 종결) 위 API 를 부르거나, 사건(예 `TransferReceivingClosed` — 이름·발행 방식은 PC 3 가 정해 적기, 사건이면 CDC 가 구독으로 바꾸고 API 는 복구용)을 낸다. 아직 처리 중인 수령(미판정 포함)이 남아 있으면 종결하지 않는다.
 - **받는 쪽**: cdc-inventory(운송 손실), 뒤에 DC 백오피스(손실 화면).
-- **상태**: 요청(2026-11-26). MFC 쪽 결정 전까지 CDC 운영자는 복구용으로 같은 API 를 직접 부를 수 있다(시험·LAN).
+- **상태**: **구현**(2026-11-26 PC 1 — 사용자 "구현해"·"전부 여기서", PC 3 대신, mfc-inbound 0.22.0 V15). 방식 = 위 API 호출(사건 없음 — CDC 구독 변경 불필요). 수령은 TRF 하나에 한 번이라 재고 반영(TIN_POSTED) 때 자동 종결, 오지 않은 이관은 센터 관리자 `POST /inbound-promises/{trfId}/closures`(사유, → CLOSED). 실패하면 재시도. 예정 응답 `closure`. 처음 요청: 요청(2026-11-26). MFC 쪽 결정 전까지 CDC 운영자는 복구용으로 같은 API 를 직접 부를 수 있다(시험·LAN).

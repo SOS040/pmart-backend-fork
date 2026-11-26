@@ -2,7 +2,9 @@ package com.pmart.mfc.inbound.api;
 
 import com.pmart.common.web.CommandResponse;
 import com.pmart.mfc.inbound.api.generated.InboundPromisesApi;
+import com.pmart.mfc.inbound.api.generated.model.CloseInboundPromiseRequest;
 import com.pmart.mfc.inbound.api.generated.model.InboundPromise;
+import com.pmart.mfc.inbound.api.generated.model.InboundPromiseClosure;
 import com.pmart.mfc.inbound.api.generated.model.InboundPromiseLinesInner;
 import com.pmart.mfc.inbound.api.generated.model.InboundPromisePackagesInner;
 import com.pmart.mfc.inbound.api.generated.model.InboundPromiseSourcesInner;
@@ -17,9 +19,11 @@ import com.pmart.mfc.inbound.api.generated.model.RecordArrivalRequest;
 import com.pmart.mfc.inbound.api.generated.model.RecordReceiptRequest;
 import com.pmart.mfc.inbound.application.InboundPromises;
 import com.pmart.mfc.inbound.application.SkuLabels;
+import com.pmart.mfc.inbound.application.TransitClosures;
 import com.pmart.mfc.inbound.domain.InboundPromiseRules.ReceiptLine;
 import com.pmart.mfc.inbound.infrastructure.InboundPromiseStore.Promise;
 import com.pmart.mfc.inbound.infrastructure.InboundPromiseStore.ReceiptRow;
+import com.pmart.mfc.inbound.infrastructure.TransitClosureStore;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -40,10 +44,13 @@ public class InboundPromisesController implements InboundPromisesApi {
 
   private final InboundPromises service;
   private final SkuLabels labels;
+  private final TransitClosures closures;
 
-  public InboundPromisesController(InboundPromises service, SkuLabels labels) {
+  public InboundPromisesController(
+      InboundPromises service, SkuLabels labels, TransitClosures closures) {
     this.service = service;
     this.labels = labels;
+    this.closures = closures;
   }
 
   @Override
@@ -59,8 +66,12 @@ public class InboundPromisesController implements InboundPromisesApi {
     var names =
         labels.of(
             page.items().stream().flatMap(v -> v.lines().stream().map(l -> l.sku())).toList());
+    var closed = closures.closures(page.items().stream().map(v -> v.promise().trfId).toList());
     var out = new ListInboundPromises200Response();
-    out.setItems(page.items().stream().map(v -> dto(v, names)).toList());
+    out.setItems(
+        page.items().stream()
+            .map(v -> withClosure(dto(v, names), closed.get(v.promise().trfId)))
+            .toList());
     var p = new ListInboundPromises200ResponsePage();
     p.setNextCursor(page.nextCursor());
     p.setSize(page.items().size());
@@ -75,7 +86,44 @@ public class InboundPromisesController implements InboundPromisesApi {
   @Override
   public ResponseEntity<InboundPromise> getInboundPromise(String trfId) {
     var v = service.get(trfId);
-    return ResponseEntity.ok(dto(v, labels.of(v.lines().stream().map(l -> l.sku()).toList())));
+    return ResponseEntity.ok(
+        withClosure(
+            dto(v, labels.of(v.lines().stream().map(l -> l.sku()).toList())),
+            closures.closure(trfId).orElse(null)));
+  }
+
+  @Override
+  public ResponseEntity<RecordArrival202Response> closeInboundPromise(
+      String trfId,
+      String idempotencyKey,
+      String xSourceSystem,
+      CloseInboundPromiseRequest b,
+      @Nullable Integer xExpectedVersion) {
+    return accepted(
+        closures.close(
+            idempotencyKey,
+            xSourceSystem,
+            trfId,
+            xExpectedVersion,
+            new TransitClosures.CloseCommand(b.getReason())));
+  }
+
+  /** (0.22.0, MI-5) 입고 종결. */
+  private static InboundPromise withClosure(
+      InboundPromise out, TransitClosureStore.@Nullable Closure c) {
+    if (c == null) {
+      return out;
+    }
+    var d = new InboundPromiseClosure();
+    d.setKind(InboundPromiseClosure.KindEnum.fromValue(c.kind()));
+    d.setClosedAt(c.closedAt().atOffset(ZoneOffset.UTC));
+    d.setClosedBy(c.closedBy());
+    d.setReason(c.reason());
+    d.setCdcNotifiedAt(c.notifiedAt() == null ? null : c.notifiedAt().atOffset(ZoneOffset.UTC));
+    d.setCdcUnreconciledQty(c.unreconciledQty());
+    d.setLastError(c.lastError());
+    out.setClosure(d);
+    return out;
   }
 
   @Override

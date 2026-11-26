@@ -54,7 +54,10 @@ import tools.jackson.databind.ObjectMapper;
 @EnableWireMock(
     @ConfigureWireMock(
         name = "inventory",
-        baseUrlProperties = "pmart.inbound.mfc-inventory-base-url"))
+        baseUrlProperties = {
+          "pmart.inbound.mfc-inventory-base-url",
+          "pmart.inbound.cdc-inventory-base-url"
+        }))
 class InboundPromiseIT extends PostgresKafkaContainerSupport {
 
   static final String SKU = "E-00000041";
@@ -342,6 +345,10 @@ class InboundPromiseIT extends PostgresKafkaContainerSupport {
                 .status())
         .isEqualTo(400);
 
+    // MI-5: CDC 입고 종결 기록(cdc-inventory — 같은 WireMock)
+    inv.stubFor(
+        WireMock.post(urlPathEqualTo("/api/v1/internal/transit-closures"))
+            .willReturn(json(200, "{\"trfId\":\"x\",\"unreconciledQty\":2}")));
     // 수령(정상 8·격리 2 / 출발 12) → inventory ConfirmReceipt → APPLIED → 품질검사 작업 8
     inv.stubFor(
         WireMock.post(urlPathEqualTo("/api/v1/internal/receipts"))
@@ -380,6 +387,17 @@ class InboundPromiseIT extends PostgresKafkaContainerSupport {
 
     p = get(w, "/inbound-promises/" + trf).body();
     assertThat(p.path("state").asString()).isEqualTo("TIN_POSTED");
+    // MI-5: 재고 반영 = 더 받을 것 없음 → 자동 종결, CDC 에 바로 알림(한 번)
+    assertThat(p.path("closure").path("kind").asString()).isEqualTo("AUTO");
+    assertThat(p.path("closure").path("cdcNotifiedAt").isNull()).isFalse();
+    assertThat(p.path("closure").path("cdcUnreconciledQty").asInt()).isEqualTo(2);
+    inv.verify(
+        1,
+        postRequestedFor(urlPathEqualTo("/api/v1/internal/transit-closures"))
+            .withHeader("Idempotency-Key", equalTo("mfc-inbound-transit-closure:" + trf))
+            .withRequestBody(matchingJsonPath("$.trfId", equalTo(trf)))
+            .withRequestBody(matchingJsonPath("$.departureId", equalTo("DEP-" + trf)))
+            .withRequestBody(matchingJsonPath("$.mfcId", equalTo(mfc))));
     assertThat(p.path("lines").path(0).path("receivedQty").asInt()).isEqualTo(10);
     assertThat(p.path("lines").path(0).path("quarantinedQty").asInt()).isEqualTo(2);
     JsonNode r = get(w, "/inbound-promises/" + trf + "/receipts/" + rid).body();
@@ -601,5 +619,27 @@ class InboundPromiseIT extends PostgresKafkaContainerSupport {
             jdbc.queryForObject(
                 "SELECT count(*) FROM inbound_task WHERE receipt_id = ?", Integer.class, rid))
         .isZero();
+
+    // MI-5 관리자 종결: 작업자 403, 사유 없음 400, 센터 관리자 → CLOSED·MANUAL·CDC 알림, 다시 종결 409
+    String cpath = "/inbound-promises/" + trf2 + "/closures";
+    assertThat(post(w, cpath, UUID.randomUUID().toString(), Map.of("reason", "미도착"), null).status())
+        .isEqualTo(403);
+    String sup = TestJwt.operator("sup-ip", List.of("MFC_SUPERVISOR"), List.of(mfc));
+    assertThat(post(sup, cpath, UUID.randomUUID().toString(), Map.of("reason", " "), null).status())
+        .isEqualTo(400);
+    inv.stubFor(
+        WireMock.post(urlPathEqualTo("/api/v1/internal/transit-closures"))
+            .withRequestBody(matchingJsonPath("$.trfId", equalTo(trf2)))
+            .willReturn(json(200, "{\"trfId\":\"x\",\"unreconciledQty\":5}")));
+    Res closed = post(sup, cpath, UUID.randomUUID().toString(), Map.of("reason", "차량 사고 미도착"), null);
+    assertThat(closed.status()).as(closed.body().toString()).isEqualTo(202);
+    JsonNode c = get(sup, "/inbound-promises/" + trf2).body();
+    assertThat(c.path("state").asString()).isEqualTo("CLOSED");
+    assertThat(c.path("closure").path("kind").asString()).isEqualTo("MANUAL");
+    assertThat(c.path("closure").path("closedBy").asString()).isEqualTo("sup-ip");
+    assertThat(c.path("closure").path("reason").asString()).isEqualTo("차량 사고 미도착");
+    assertThat(c.path("closure").path("cdcUnreconciledQty").asInt()).isEqualTo(5);
+    assertThat(post(sup, cpath, UUID.randomUUID().toString(), Map.of("reason", "또"), null).status())
+        .isEqualTo(409);
   }
 }

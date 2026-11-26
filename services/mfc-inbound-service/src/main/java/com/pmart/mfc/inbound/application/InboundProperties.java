@@ -10,10 +10,14 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param postInterval 초기 보유 반입 전기 주기(PENDING 기록 재시도 포함)
  * @param replenishmentEnabled 자동 선반 보충 점검(IV-04)을 돌릴지 — 주기는 {@code
  *     pmart.inbound.replenishment-interval}(기본 1분)
+ * @param cdcInventoryBaseUrl cdc-inventory-service(내부 transit-closures — CDC 이관 입고 종결 알림, MI-5)
  */
 @ConfigurationProperties(prefix = "pmart.inbound")
 public record InboundProperties(
-    String mfcInventoryBaseUrl, Duration postInterval, boolean replenishmentEnabled) {
+    String mfcInventoryBaseUrl,
+    Duration postInterval,
+    boolean replenishmentEnabled,
+    String cdcInventoryBaseUrl) {
 
   public InboundProperties {
     mfcInventoryBaseUrl =
@@ -21,5 +25,9 @@ public record InboundProperties(
             ? "http://mfc-inventory-service:8301"
             : mfcInventoryBaseUrl;
     postInterval = postInterval == null ? Duration.ofSeconds(3) : postInterval;
+    cdcInventoryBaseUrl =
+        cdcInventoryBaseUrl == null || cdcInventoryBaseUrl.isBlank()
+            ? "http://cdc-inventory-service:8601"
+            : cdcInventoryBaseUrl;
   }
 }
