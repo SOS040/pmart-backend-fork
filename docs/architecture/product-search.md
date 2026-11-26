@@ -1,7 +1,7 @@
 # 상품 검색 — 현재 구현 정리 (Elasticsearch 중심)
 
-- 기준: **2026-11-23**(LAN 색인 `products-v10`, 계약 0.13.0 배포 뒤 — §13 AI 상담(RAG)이 검색을 쓸 때 추가). 지금 어떻게 동작하는지 한곳에 모은 안내서이고, 설계 결정 문서는 아니다.
-- 바뀐 이력(요약): 11-05 v5(띄어쓰기·초성·센터 취급) → 11-17 최근 검색어·인기 키워드(0.2.0) → 11-19 성능 개선·ES 관측 → 11-20 v6 순위 신호(ADR-0072, 0.3.0) → 11-20 v7 동의어·오타 교정(ADR-0073 A, 0.4.0) → 동의어 승인 반영(B, 0.5.0) → 교정 다음 쪽(0.5.1) → 11-21 할인가(0.6.0, ADR-0082) → 11-22 v8 원산지·설명(0.7.0)·필터 이름 묶기·할인 상품만(0.8.0)·할인율순(0.9.0) → 11-23 목록 판매 가능 여부(0.10.0)·v9 영양·알레르기(0.11.0)·0건 비슷한 상품(0.12.0)·카테고리 대표 사진(0.13.0)·v10 사용자 사전(그릭요구르트·스파클링).
+- 기준: **2026-11-26**(LAN 색인 `products-v11`, 계약 0.14.0 — §14 의미 검색·§15 개인화 결정 추가. 11-23 판은 v10·0.13.0). 지금 어떻게 동작하는지 한곳에 모은 안내서이고, 설계 결정 문서는 아니다.
+- 바뀐 이력(요약): 11-05 v5(띄어쓰기·초성·센터 취급) → 11-17 최근 검색어·인기 키워드(0.2.0) → 11-19 성능 개선·ES 관측 → 11-20 v6 순위 신호(ADR-0072, 0.3.0) → 11-20 v7 동의어·오타 교정(ADR-0073 A, 0.4.0) → 동의어 승인 반영(B, 0.5.0) → 교정 다음 쪽(0.5.1) → 11-21 할인가(0.6.0, ADR-0082) → 11-22 v8 원산지·설명(0.7.0)·필터 이름 묶기·할인 상품만(0.8.0)·할인율순(0.9.0) → 11-23 목록 판매 가능 여부(0.10.0)·v9 영양·알레르기(0.11.0)·0건 비슷한 상품(0.12.0)·카테고리 대표 사진(0.13.0)·v10 사용자 사전(그릭요구르트·스파클링). → 11-25 v11 의미 검색(벡터 + LLM 꼬리표, ADR-0088)·검색 카드 "N개 남음"(0.14.0) → 11-26 꼬리표 실패 고침(ollama 500 반복 — §14-3)·자주 산 상품은 검색 순위에 넣지 않기로(§15)
 - 정본(바뀌면 이 문서보다 우선):
   - 결정: ADR-0031(Elastic Stack, 색인은 Logstash 만), ADR-0034(이력 토픽 무제한 보관, 재색인 = Kafka 전체 재생), ADR-0038(검색 ES·로그 ES 분리), ADR-0021(DB 없는 소비자의 버전 비교 멱등), **ADR-0072**(순위 신호), **ADR-0073**(동의어·오타 교정), **ADR-0082**(쿠폰·기간 할인), **ADR-0083**(RAG 상품 질문은 검색 결과를 정해진 문장으로)
   - 계약: `contracts/openapi/search-service.yaml`(**0.13.0**), 사건 `contracts/events/*.v1.json`
@@ -23,13 +23,14 @@ storefront ──── ProductRankingSignalsChanged ▶ commerce.product-rankin
                       ├─ 콘텐츠 카드 보강(product-content 공개 API, 실패 시 재시도) + 상품명 초성
                       └─ 끝내 실패 → Kafka search-index.DLT + 경보
                                                                           ▼
-고객 앱 ─▶ api-gateway ─▶ search-service ──읽기──▶ products(→ products-v10)·sku-discounts
+고객 앱 ─▶ api-gateway ─▶ search-service ──읽기──▶ products(→ products-v11)·sku-discounts
 AI 상담(RAG) ─(토큰 없이, ADR-0083)─▶ search-service
                            │                       sku-handlings·sku-prices(Logstash 만 씀)
                            ├──쓰기(자기 색인)──▶ search-recent·search-log(검색 기록)
                            │                     search-terms(오타 사전, 10분마다 다시 만듦)
                            │                     search-synonym-rules + 동의어 집합 pmart-product-synonyms
                            ├─ 카테고리 이름 경로·필터 패널: product-service(5분 사본)
+                           ├─ 의미 검색(v11): ollama(pc2) — 검색어 벡터(검색마다, 1.5초 상한)·뒤 작업이 꼬리표·벡터를 products 에 부분 갱신(§14)
                            └─ ApprovalDecided(SEARCH_SYNONYM) 구독 → 동의어 반영 → 회신(StreamBridge)
 ```
 
@@ -43,14 +44,14 @@ AI 상담(RAG) ─(토큰 없이, ADR-0083)─▶ search-service
 | Elasticsearch | `es-search` — 검색 전용(ADR-0038). 8.18.0, **단일 노드**(복제본 없음), 보안 끔 — LAN 시험망이라 의도. pc3 `192.168.0.222:9200` |
 | 형태소 분석기 | analysis-nori. 컨테이너 시작 때 없으면 설치(새로 만들 때 인터넷 필요) |
 | Logstash | `logstash-search` — 8.18.0, pc3, LAN 포트 없음. 파이프라인 `search-index`(작업자 1·배치 1), 영구 큐 256MB, Logstash DLQ 64MB |
-| 색인 대상·그룹 | `deploy/lan/elastic/search-index.env`(별칭 `products`·`sku-prices`·`sku-handlings`·`sku-discounts`, 그룹 `search-index-logstash-v10`) → `render.sh` 가 Logstash 환경변수로 |
+| 색인 대상·그룹 | `deploy/lan/elastic/search-index.env`(별칭 `products`·`sku-prices`·`sku-handlings`·`sku-discounts`, 그룹 `search-index-logstash-v11`) → `render.sh` 가 Logstash 환경변수로 |
 | 색인 정의 | `services/search-service/src/main/resources/elasticsearch/*.json` — es-init-search(pc3)과 search-service 가 같은 파일로 만든다. 정의에 별칭을 넣지 않고 **별칭이 없을 때만** 붙인다 |
 | 로컬 | `deploy/local/docker-compose.yml`(ES·es-init). 옛 `esdata` 볼륨이 있으면 별칭이 옛 색인에 남는다 — 볼륨을 지우고 새로 띄운다 |
 
-### LAN 색인 목록 (2026-11-23 확인)
+### LAN 색인 목록 (2026-11-23 확인, products 는 2026-11-26)
 | 별칭 | 색인 | 문서 | 쓰는 쪽 | 내용 |
 |---|---|---|---|---|
-| `products` | **products-v10** | 504 | Logstash | 상품 검색 문서(§3). v5~v9 는 지웠다 |
+| `products` | **products-v11** | 504 | Logstash(+ search-service 가 의미 검색 칸만 부분 갱신) | 상품 검색 문서(§3). v5~v10 은 지웠다. 의미 검색 꼬리표·벡터 504/504(2026-11-26) |
 | `sku-discounts` | sku-discounts-v1 | — | Logstash | SKU 지금 할인(ADR-0082, 토픽 compact) — 결과의 할인가·`onSale` |
 | `sku-prices` | sku-prices-v1 | 503 | Logstash | SKU 기본가(가격 사건 → 상품 문서로 퍼뜨림) |
 | `sku-handlings` | sku-handlings-v1 | 503 | Logstash | SKU 별 센터 취급(센터별 버전) |
@@ -60,7 +61,7 @@ AI 상담(RAG) ─(토큰 없이, ADR-0083)─▶ search-service
 | `search-synonym-rules` | search-synonym-rules-v1 | 0 | search-service | 동의어 규칙 정본(state·반영 기록) — 아직 규칙 없음 |
 | — | ES 동의어 집합 `pmart-product-synonyms` | 규칙 0 | search-service | `name` 검색 분석기가 읽음(updateable) |
 
-## 3. 상품 색인 문서 (`products-v10`, strict 매핑)
+## 3. 상품 색인 문서 (`products-v11`, strict 매핑)
 
 | 필드 | 뜻 | 채우는 사건 |
 |---|---|---|
@@ -78,6 +79,7 @@ AI 상담(RAG) ─(토큰 없이, ADR-0083)─▶ search-service
 | `originType`·`originText`·`description` | **(v8)** 원산지(DOMESTIC·IMPORTED·null)·원산지 글·상품 설명 — 설명은 낮은 비중 검색 | 카드 API `include=search` 보강 |
 | `nutrition` | **(v9)** 표시사항 영양 — 기준 `basisUnit` G(100g)·ML(100mL), `energyKcal`·`sodiumMg`·`sugarsG`·`proteinG`·`fatG`, 모르는 칸 null. LAN 504 중 239 | 카드 보강(product-content 0.6.0) |
 | `allergens` | **(v9)** `contains`(함유)·`mayContain`(같은 시설 제조)·`text`(표시 원문) — 법정 이름. LAN 504 중 300. **목록에 없음 ≠ 들어 있지 않음**(§13) | 카드 보강 |
+| `aiTags`·`semanticVector`·`semanticHash`·`semanticModel`·`semanticAtMs` | **(v11, ADR-0088)** LLM 꼬리표(검색 전용 — 고객 화면에 안 보임)·1024차원 벡터·원문 해시·모델·만든 시각 | **Logstash 가 아니라** search-service `SemanticEnricher` 가 부분 갱신(§14) |
 | `updatedAtMs` | Logstash 가 마지막으로 반영한 시각 | 모두 |
 
 - **상품명 분석**:
@@ -85,7 +87,7 @@ AI 상담(RAG) ─(토큰 없이, ADR-0083)─▶ search-service
   - **검색 분석기(v7)**: `name` 을 찾을 때만 `name_nori_search` = nori + **동의어**(`synonym_graph`, 집합 `pmart-product-synonyms`, updateable). 색인 분석기는 그대로라 동의어를 바꿔도 재색인이 필요 없다(다음 검색부터).
 - **검색 대상**: 이름과 상품 버전이 모두 있고 판매중지(`SALE_STOPPED`)가 아닌 문서. 콘텐츠가 아직 게시되지 않은 상품은 이름이 없어 검색되지 않는다.
 - **재고 수량(판매 가능량)은 색인에 없다** — 목록의 판매 가능 여부는 검색할 때 실시간으로 붙인다(§5 `availability`).
-- 적용된 색인의 매핑은 고치지 않는다. 필드를 더하면 새 색인(`-v11`)을 만들고 재색인한다(§8).
+- 적용된 색인의 매핑은 고치지 않는다. 필드를 더하면 새 색인(`-v12`)을 만들고 재색인한다(§8). v11 로 재색인하면 의미 검색 칸은 비어서 뒤 작업이 다시 채운다(2분에 4건 — 504건이면 약 4시간).
 - 사용자 사전(v8·v10): nori 가 동의어 낱말을 쪼개지 않게(어묵·오뎅·햇반·요거트·그릭요구르트·스파클링 등) — 바꾸면 새 색인.
 
 ## 4. 색인 규칙 (Logstash `search-index.conf`)
@@ -98,7 +100,7 @@ AI 상담(RAG) ─(토큰 없이, ADR-0083)─▶ search-service
 - **영구 큐**: Kafka 오프셋 커밋이 ES 쓰기보다 먼저다 — "소비 지연 0" 만으로 반영 완료를 판단하지 않는다(큐도 비어야 함).
 - 파이프라인을 바꾸면 `SearchFlowIT`(실제 Kafka·ES·Logstash)로 확인하고, 문법은 `logstash -t -f search-index.conf` 로 먼저.
 
-## 5. 검색 API (`/api/v1/search/...`, 계약 0.13.0)
+## 5. 검색 API (`/api/v1/search/...`, 계약 0.14.0)
 
 ### `GET /search/products`
 | 파라미터 | 동작 |
@@ -119,6 +121,7 @@ AI 상담(RAG) ─(토큰 없이, ADR-0083)─▶ search-service
   - **(0.6.0) 할인**: `salePrice`·`discountRatePercent`·`discountName`·`discountEndsAt` — 지금 기간 할인이 있을 때만(할인 색인을 못 읽으면 정가로, 검색은 성공). 가격순·가격 범위는 기본가.
   - **(0.10.0) `availability`**: mfcId 를 줄 때만 AVAILABLE·SOLD_OUT·UNKNOWN(그 센터에서 취급 옵션이 모두 품절이면 SOLD_OUT) — 검색 때 product-content 카드로 실시간. mfcId 가 없으면 null. 거르기·정렬에는 안 씀.
   - **(0.11.0) `nutrition`·`allergens`**: §3 그대로. 알레르기는 거르기가 없다 — 검색어가 묻는 꼴("땅콩 함유"·"계란 알레르기")일 때만 `contains` 상품을 낮은 비중으로 더한다(같은 시설은 더하지 않음).
+  - **(0.14.0) `lowStockQty`**: 그 센터에서 조금 남았으면 남은 수("N개 남음", storefront 와 같은 판정). mfcId 없으면 null.
   - **(0.12.0) `similarItems`**: 첫 쪽이 0건(교정 뒤에도)이면 비슷한 이름 상품(형태소 하나라도·조각 70%) → 없으면 인기 상품, 최대 20. **찾은 상품이 아니다**(§13). 결과가 있으면 null.
 - **오타 교정(ADR-0073)** — 첫 쪽·검색어 있음·초성 아님·`noCorrection` 아님일 때:
   - **결과 0건** → 사전(`search-terms`)에 없는 낱말을 자모 거리(6자모 이하 1·넘으면 2, 첫 자모 고정)로 가장 가깝고 상품이 많은 낱말로 바꿔 다시 찾고 `correctedQuery`(결과는 고친 검색어 것, `query` 는 원래 검색어). 앱: "'두부' 검색 결과예요 · '두뷰'로 찾기"
@@ -197,7 +200,9 @@ AI 상담(RAG) ─(토큰 없이, ADR-0083)─▶ search-service
 | 여러 SKU 상품의 취급 판정 | 지금은 대표 SKU 기준 |
 | SKU 옵션·바코드 검색 | 색인에 대표 SKU 하나뿐 |
 | 동의어 한 방향 규칙 | 지금은 같은 뜻 묶음만(§6) |
-| 부하 시험·검색 품질 평가 | 도구·정답 검색어 세트 — 새 도구 도입이라 결정 필요 |
+| 검색 품질 평가 | 정답 검색어 세트 — 결정 필요 |
+| 부하 시험 결과 | 도구는 있음(JMeter 5.6.3, 2026-11-26 — `docs/operations/2026-11-26-jmeter-load-test-plan.md`). 검색 30%·자동완성 포함, 의미 검색 켠 채로. 결과는 아직 |
+| 검색 개인화(자주 산 상품 순위 반영) | **하지 않기로**(2026-11-26 검토 — §15) |
 
 ## 11. 시험
 | 시험 | 확인하는 것 |
@@ -211,6 +216,7 @@ AI 상담(RAG) ─(토큰 없이, ADR-0083)─▶ search-service
 ## 12. 성능·알려진 문제
 - 분석: `docs/operations/2026-11-19-search-performance-analysis.md` — 상품 약 500개 규모에서 서버 안 약 10ms, 사용자가 겪는 시간은 대부분 네트워크.
 - 고친 것(11-19): 깊은 커서 500 → 400, 카테고리 경로·필터 패널 사본을 기다리지 않음, 색인 확인을 시작 때 한 번.
+- 의미 검색(v11)은 검색마다 ollama 에 검색어 벡터를 묻는다(최근 500개 사본, `query-timeout` 1.5초 넘으면 키워드만). 부하가 높으면 pc2 ollama(고객 상담 챗봇과 공유)가 병목이 될 수 있다 — 부하 시험에서 같이 본다.
 - 고객 앱 "느림"(11-20)은 검색이 아니라 게이트웨이 처리율 제한(사진 429)과 원본 이미지였다 — 공개 사진 경로 제한 제외·축소본으로 고침. 정리: `docs/operations/2026-11-20-search-detail-review-summary.md`, 이미지: `docs/architecture/product-image-variants.md`.
 
 ## 13. AI 상담(RAG)이 검색을 쓸 때 — CA-1·CA-2·AI-2 를 고려 (2026-11-23)
@@ -252,3 +258,38 @@ AI 상담(RAG) ─(토큰 없이, ADR-0083)─▶ search-service
 ### 13-5. 계약이 바뀌면
 - 결과 칸이 늘면(검색 계약 minor) AI 쪽 `ProductSearchClient` 는 모르는 칸을 무시하므로 깨지지 않는다. 칸의 **뜻**이 바뀌면(예: `allergens` 판독 기준) 이 절과 CA-1 문장을 같이 고친다.
 - 새 색인(v11)으로 바뀌어도 API 가 같으면 AI 쪽은 할 일 없다.
+
+## 14. 의미 검색 (2026-11-25 ADR-0088, products-v11 — "빨간 라면")
+
+### 14-1. 하는 일
+- 키워드 검색(BM25)은 그대로 두고 **더한다**. 검색할 때 LLM 글 생성은 쓰지 않는다(CPU 에서 수 초) — 늘어나는 것은 검색어 임베딩 한 번뿐.
+- 미리(뒤 작업): 상품마다 LLM(qwen3:4b)이 색·맛·식감·쓰임 같은 짧은 낱말을 최대 12개 뽑아 `aiTags`, 상품명·카테고리·꼬리표·설명 앞부분을 임베딩(qwen3-embedding:0.6b)해 `semanticVector`.
+- 검색할 때: 키워드 cross_fields 에 `aiTags` 를 더하고, 관련도 정렬일 때 검색어 벡터 kNN(`similarity` 0.55·`knn-boost` 3·`knn-k` 20)을 섞는다. 거르기(센터 취급·판매중지·필터)는 kNN 에도 같이. 초성·할인율순에서는 쓰지 않는다. kNN 이 실패하면 키워드만 다시.
+- 꼬리표는 **고객 화면에 보이지 않는다**(검색 전용). 금지 낱말(원산지·유기농·영양·알레르기·효능·최저가·보관 주의)·상품명에 있는 낱말은 버린다(`SemanticRules.parseTags`).
+
+### 14-2. 설정 (pmart-config `search-service-lan.yml` `pmart.search.semantic.*`)
+- `enabled: true`, `ollama-base-url: http://ollama:11434`(pc2 RAG 묶음 — 같은 PC), 모델 위 둘, `interval: PT2M`·`batch-size: 4`(사용자 "천천히 채워" — 고객 상담 챗봇과 CPU 를 나눈다), `query-timeout: PT1.5S`, `tag-timeout: PT90S`, `keep-alive: 24h`.
+- 원문 해시(`SemanticRules.hash` — 이름·카테고리 경로·설명 앞 400자·모델)가 바뀐 상품만 다시 만든다. 모델을 바꾸면 전부 다시.
+
+### 14-3. 2026-11-26 고친 것 (LAN pc2)
+- 증상: 504 중 446 만 채워지고 58건이 매번 실패(search-service WARN `의미 검색 상품 하나 실패 — InternalServerError`).
+- 원인 ①: ollama 500 `prediction aborted, token repeat limit reached` — 온도 0 에서 같은 말을 반복하거나 입력 칸(상품명·카테고리·설명)을 그대로 되풀이했다. → `OllamaClient.generateJson` 이 `format` 에 **JSON 스키마**(`{tags: string[] ≤12}`)를 주고 `repeat_penalty` 1.1·`num_predict` 200(720e305a). 실패하던 8건 직접 시험 모두 200·0.5~0.9초.
+- 원인 ②: 실패한 상품을 batch-size 에 세지 않아, 실패가 이어지면 **2분마다 전 상품을 연달아** 불렀다(ollama·챗봇 CPU 부담). → 실패도 센다(743f8e23).
+- 결과: 그날 안에 504/504 채움(ES `semanticHash` 있는 문서 504). 이미 만든 446건은 해시가 같아 다시 만들지 않았다.
+- 다시 생기면: search-service 로그 WARN 수 → ollama `[GIN] … 500` → 같은 상품으로 `POST http://192.168.0.34:11434/api/generate` 를 직접 불러 본문의 `error` 를 본다.
+
+### 14-4. 시험
+- `SemanticRulesTest`(해시·꼬리표 거르기), `SemanticSearchIT`(실제 ES 8.18 + 가짜 ollama — 꼬리표·kNN 섞기·실패 때 키워드만).
+
+## 15. 개인화 — 자주 산 상품 (2026-11-26 검토·사용자 결정)
+- 사용자 "고객이 자주구매하는것에 대한 기록이 있어?" → 따로 모은 기록·API 는 없다(원재료는 order 주문 줄 — `customer_order_line` 의 sku·상품명 사본).
+- 검토한 세 방식과 결정(사용자 "1, 2로 할건데"):
+
+| 방식 | 결정 | 이유 |
+|---|---|---|
+| ① 따로 목록(홈·마이 "자주 산 상품", 바로 담기) | **한다** — order-service 고객 본인 조회(최근 6개월·2번 이상, 횟수순) | 가장 단순·설명 쉬움·검색 성능 영향 없음 |
+| ② 검색창 빈칸 제안(검색어 입력 전 칩) | **한다** — 고객앱이 ① 을 불러 보여 줌. **search-service 는 바꾸지 않는다** | 다시 사기가 빨라지고 결과 순위는 그대로 |
+| ③ 검색 순위에 반영("우유" → 그 고객이 산 우유 위로) | **하지 않는다** | 검색 서비스에 개인 데이터가 없음(검색마다 order 조회 → 느려짐, 또는 고객별 구매를 색인에 복사 → 개인정보가 검색 쪽으로), 사람마다 순위가 달라 설명·정렬 기준이 흐려짐, 이미 의미 검색 벡터 조회가 있음 |
+
+- 나중에 ③ 을 다시 본다면 순위는 그대로 두고 결과 카드에 "전에 산 상품" 표시만 붙이는 정도(①·② 효과를 본 뒤).
+- 구현 안·순서: `docs/operations/2026-11-26-pc1-session-handoff.md` §2-2(아직 만들지 않음 — 시작 전에 사용자 확인).
