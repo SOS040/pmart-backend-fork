@@ -192,6 +192,11 @@ spring:
               predicates:
                 - Path=/api/v1/cdcs/*/putaway-tasks,/api/v1/cdcs/*/putaway-tasks/**,/api/v1/cdcs/*/replenishment-checks # CDC 적치 지시·자동 보충(cdc-inbound 0.2.0 #520, 2026-11-26)
               order: -85
+            - id: fleet-service
+              uri: ${pmart.gateway.upstream.fleet-service}
+              predicates:
+                - Path=/api/v1/carriers,/api/v1/vehicles,/api/v1/vehicles/**,/api/v1/drivers,/api/v1/drivers/** # TMS 운송사·차량·기사(fleet 0.2.0 #527, 2026-11-26)
+              order: -84
             - id: mfc-fulfillment-service
               uri: ${pmart.gateway.upstream.mfc-fulfillment-service}
               predicates:
@@ -308,6 +313,7 @@ pmart:
       cdc-location-service: http://cdc-location-service:8602
       cdc-quality-service: http://cdc-quality-service:8604
       cdc-inbound-service: http://cdc-inbound-service:8605
+      fleet-service: http://fleet-service:8703
       mfc-capacity-service: http://mfc-capacity-service:8303
       mfc-location-service: http://mfc-location-service:8304
       mfc-quality-service: http://mfc-quality-service:8305
