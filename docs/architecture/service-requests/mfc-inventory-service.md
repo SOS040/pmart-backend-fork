@@ -113,3 +113,15 @@
 - **사용자 결정(2026-11-25)**: 미판정도 받은 수량으로 본다(r 에 넣음), 전달은 사건 + 복구용 API.
 - **설정**: cdc-inventory 구독 바인딩(`mfc.inventory.v1`) — PC 1(pmart-config).
 - **(2026-11-26 cdc 세션 덧붙임)** CDC 쪽 `ReceiptCorrectionPosted` 구독도 구현했다(cdc-inventory 0.13.0) — **줄(`lines[]` sku·lot·deltaNormal/Quarantined/PendingQty)을 꼭 실어 주기**(deltaQty 만 있으면 출발 줄에 나눌 수 없어 거절). 품질 판정만 바뀐 것은 내지 않는다.
+
+## IV-9. LOT 지정 예약·LOT 가용 조회 — 마감세일 (2026-11-26, 보낸 영역 platform — PC 1)
+
+- **왜**: 마감세일(ADR-0090 B1~B5 — 사용자 2026-11-26 "고객앱에 마감세일이랑 1+1 띄우게"·"추천대로"). 센터 관리자가 **센터·SKU·LOT(소비기한)·할인율·판매 수량**을 등록·승인하면, 고객이 그 "마감 물량"을 사고 주문은 **그 LOT 에서만** 재고를 잡아야 한다. 지금 예약은 FEFO 자동 배정만이고 `lotConstraint` 는 400(계약 0.50.0 설명).
+- **필요한 것**
+  1. **예약 `lotConstraint.lotId` 지원**(`POST /internal/reservations` 줄) — 그 줄은 그 LOT 의 적격 가용에서만 잡는다(FEFO 로 다른 LOT 를 섞지 않음). 모자라면 지금과 같은 422 `INSUFFICIENT_STOCK`(details reason 에 `lotId=` 를 덧붙여 구분). 같은 주문에 같은 SKU 가 LOT 지정 줄·일반 줄로 함께 올 수 있다(일반 줄은 그 LOT 를 피하거나 피하지 않거나 — PC 3 이 정해 알려 주기).
+  2. **피킹이 그 LOT 를 따른다** — `pick-plan`·`location-allocations` 가 예약된 LOT 의 칸으로만 배정(작업자가 다른 LOT 를 집지 않게). 결품·재배정 때도 그 LOT 안에서만, 없으면 결품.
+  3. **LOT 가용 조회(내부)** — 예: `GET /internal/lot-availability?mfcId=&sku=&lotId=`(여러 개 가능) → `{lotId, expiryDate, shippableAvailable}`. pricing/promotion 이 "N개 남음" = min(마감 오퍼 남은 수량, 이 값)을 보인다. 소비기한 적격 판정은 지금 예약과 같게(최소 잔여일 Q-05 — **할인으로 품질 제한을 풀지 않음**, 원문 Commerce 6.4).
+  4. **LOT 목록(센터 관리자 화면용)** — 등록 화면에서 고를 수 있게 센터·SKU 별 LOT·소비기한·가용. 지금 `/mfcs/{mfcId}/stock-units` 가 이미 주면 그것으로 — 아니면 위 3 의 직원용.
+- **PC 1 쪽(이 요청이 끝나면)**: promotion 에 마감 오퍼(센터·SKU·LOT·할인율·수량, 승인), pricing 견적(마감가 줄)·order(LOT 지정 줄 → orchestration 예약에 lotConstraint)·표시(마감세일 목록·"N개 남음").
+- **결정(ADR-0090)**: B2 그 LOT 지정 예약, B3 다 팔리면 오퍼만 품절(정상가로 바꿔 팔지 않음), B4 센터별, B5 반품은 일반과 같음.
+
