@@ -95,3 +95,4 @@ CDC WMS 작업을 이어 받는 세션·사람이 **처음 읽는 문서**. 무�
 - 2026-11-26: 운영 제한 2/3 — cdc-inventory 0.19.0 새 할당·추가 할당 앞 확인(막힘 409·확인 안 되면 503 보류). PR `cdc/restriction-inventory`(#512 다음). 주소 기본 `http://cdc-quality-service:8604`, cdc-quality 를 먼저 배포.
 - 2026-11-26: 운영 제한 3/3 — cdc-outbound 0.24.0 출발 검증 TOUT 직전 확인(막힘 REJECTED·불명 UNKNOWN_RESULT). PR `cdc/restriction-outbound`(#514 다음). 배포 순서 quality 0.4.0 → inventory 0.19.0 → outbound 0.24.0.
 - 2026-11-26: DC 백오피스 M-5 사건 기록 — cdc-outbound 0.25.0 `GET /cdcs/{cdcId}/events`(이미 남은 기록을 최신 순으로, 이상 알림 등급 없음). PR `cdc/event-log`(#517 다음). 화면 회신 `docs/handoff/clients/cdc-backoffice/2026-11-25-reply-monitoring-gaps.md` 덧붙임.
+- 2026-11-26: 입고·적치·보충 1/3 — cdc-location 0.7.0(Flyway V4) 공간 예약·피킹 선반 최소·목표 설정. PR `cdc/location-space`. 다음 cdc-inbound 새 서비스(적치 지시·자동 보충·가상 설비 결과·다음 작업 받기), 그 뒤 시드(최소·목표 규칙은 시뮬레이터 세션이 사용자 확인 중).
