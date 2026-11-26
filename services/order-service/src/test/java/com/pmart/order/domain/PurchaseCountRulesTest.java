@@ -36,4 +36,37 @@ class PurchaseCountRulesTest {
     assertThat(PurchaseCountRules.customerMetricsRangeProblem(d, d.minusDays(1))).isNotNull();
     assertThat(PurchaseCountRules.customerMetricsRangeProblem(null, d)).isNotNull();
   }
+
+  @Test
+  void customerIdsDedupeAndLimit() {
+    assertThat(PurchaseCountRules.customerIds(" a, b ,a,,")).containsExactly("a", "b");
+    assertThat(PurchaseCountRules.customerIds(",")).isNull();
+    assertThat(PurchaseCountRules.customerIds(null)).isNull();
+    assertThat(PurchaseCountRules.customerIds("x,".repeat(50))).hasSize(1);
+    StringBuilder many = new StringBuilder();
+    for (int i = 0; i < 51; i++) {
+      many.append("id").append(i).append(',');
+    }
+    assertThat(PurchaseCountRules.customerIds(many.toString())).isNull();
+  }
+
+  @Test
+  void recentAmountSinceIsThreeMonthsBackAtSeoulMidnight() {
+    assertThat(PurchaseCountRules.recentAmountSince(LocalDate.of(2026, 11, 26)))
+        .isEqualTo(java.time.Instant.parse("2026-08-25T15:00:00Z"));
+    assertThat(PurchaseCountRules.recentAmountSince(LocalDate.of(2026, 5, 31)))
+        .isEqualTo(java.time.Instant.parse("2026-02-27T15:00:00Z")); // 2-28 0시 KST
+  }
+
+  @Test
+  void cursorRoundTripAndBadCursor() {
+    var c =
+        new PurchaseCountRules.Cursor(
+            java.time.Instant.parse("2016-05-20T03:00:00.123456Z"), "ACC:1");
+    assertThat(PurchaseCountRules.decodeCursor(PurchaseCountRules.encodeCursor(c))).isEqualTo(c);
+    assertThat(PurchaseCountRules.decodeCursor("@@bad")).isNull();
+    assertThat(PurchaseCountRules.decodeCursor(null)).isNull();
+    assertThat(PurchaseCountRules.lastOrderRangeProblem(null, null)).isNotNull();
+    assertThat(PurchaseCountRules.lastOrderRangeProblem(null, LocalDate.of(2016, 1, 1))).isNull();
+  }
 }

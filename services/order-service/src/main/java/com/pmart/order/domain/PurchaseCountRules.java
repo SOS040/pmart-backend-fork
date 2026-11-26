@@ -1,7 +1,13 @@
 package com.pmart.order.domain;
 
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.Base64;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
@@ -41,7 +47,90 @@ public final class PurchaseCountRules {
   /** 고객 구매 지표 기간 상한(from·to 포함 날짜 수). */
   public static final int MAX_CUSTOMER_METRICS_DAYS = 366;
 
+  /** O-12 고객별 구매 요약·고객 찾기를 볼 수 있는 역할(직원 고객 조회와 같음, 센터 범위 없음). */
+  public static final Set<String> CUSTOMER_STAFF_ROLES = Set.of("CS_AGENT", "OPERATOR_ADMIN");
+
+  /** O-12 한 번에 요약할 고객 수 상한. */
+  public static final int MAX_SUMMARY_CUSTOMERS = 50;
+
+  /** O-12 최근 금액 기간(개월) — 오늘(Asia/Seoul) 이만큼 전 날짜 0시부터. */
+  public static final int RECENT_AMOUNT_MONTHS = 3;
+
+  /** 고객 찾기 한 쪽(그 밖은 계약 PageSize 1~200). */
+  public static final int DEFAULT_PAGE_SIZE = 50;
+
+  /** 마지막 구매 시각·고객 ID 커서. */
+  public record Cursor(Instant lastOrderAt, String customerId) {}
+
   private PurchaseCountRules() {}
+
+  /** O-12 볼 수 있는지. */
+  public static boolean customerStaff(java.util.Collection<String> roles) {
+    return roles.stream().anyMatch(CUSTOMER_STAFF_ROLES::contains);
+  }
+
+  /** 쉼표 구분 고객 ID → 앞뒤 공백 빼고 빈 것 빼고 중복 한 번(순서 유지). 1~50개가 아니면 null. */
+  public static @Nullable List<String> customerIds(@Nullable String raw) {
+    if (raw == null) {
+      return null;
+    }
+    LinkedHashSet<String> ids = new LinkedHashSet<>();
+    for (String x : raw.split(",")) {
+      String v = x.strip();
+      if (!v.isEmpty()) {
+        ids.add(v);
+      }
+    }
+    if (ids.isEmpty() || ids.size() > MAX_SUMMARY_CUSTOMERS) {
+      return null;
+    }
+    return new ArrayList<>(ids);
+  }
+
+  /** 최근 금액 시작 = 오늘(Asia/Seoul) {@value #RECENT_AMOUNT_MONTHS}개월 전 날짜 0시. */
+  public static Instant recentAmountSince(LocalDate todaySeoul) {
+    return todaySeoul
+        .minusMonths(RECENT_AMOUNT_MONTHS)
+        .atStartOfDay(OrderMetricsRules.SEOUL)
+        .toInstant();
+  }
+
+  /** 마지막 구매일 기간 검사 — 하나는 있어야 하고 from ≤ to. 문제가 있으면 사유, 없으면 null. */
+  public static @Nullable String lastOrderRangeProblem(
+      @Nullable LocalDate from, @Nullable LocalDate to) {
+    if (from == null && to == null) {
+      return "lastOrderFrom·lastOrderTo 중 하나는 필요합니다.";
+    }
+    if (from != null && to != null && from.isAfter(to)) {
+      return "lastOrderFrom 은 lastOrderTo 보다 늦을 수 없습니다.";
+    }
+    return null;
+  }
+
+  public static String encodeCursor(Cursor c) {
+    String raw =
+        c.lastOrderAt().getEpochSecond() + ":" + c.lastOrderAt().getNano() + ":" + c.customerId();
+    return Base64.getUrlEncoder()
+        .withoutPadding()
+        .encodeToString(raw.getBytes(StandardCharsets.UTF_8));
+  }
+
+  /** 잘못된 커서면 null. */
+  public static @Nullable Cursor decodeCursor(@Nullable String cursor) {
+    if (cursor == null || cursor.isBlank()) {
+      return null;
+    }
+    try {
+      String raw = new String(Base64.getUrlDecoder().decode(cursor), StandardCharsets.UTF_8);
+      String[] p = raw.split(":", 3);
+      if (p.length != 3 || p[2].isEmpty()) {
+        return null;
+      }
+      return new Cursor(Instant.ofEpochSecond(Long.parseLong(p[0]), Long.parseLong(p[1])), p[2]);
+    } catch (IllegalArgumentException e) {
+      return null;
+    }
+  }
 
   /** 상태 하나가 산 것인지. */
   public static boolean purchased(String status) {

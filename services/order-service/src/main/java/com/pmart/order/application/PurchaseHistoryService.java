@@ -68,4 +68,78 @@ public class PurchaseHistoryService {
     return store.customerCounts(
         r.from(), r.toExclusive(), mfcId == null || mfcId.isBlank() ? null : mfcId.strip());
   }
+
+  /** O-12 요약 결과 — 요청 순서, 산 것이 없는 고객도 한 줄(0·null). */
+  public record Summaries(
+      Instant recentSince, List<PurchaseHistoryStore.CustomerSummary> found, List<String> ids) {}
+
+  /** O-12 찾기 결과. */
+  public record LastOrders(
+      List<PurchaseHistoryStore.LastOrder> items, @Nullable String nextCursor) {}
+
+  /** O-12: 직원(CS_AGENT·OPERATOR_ADMIN) — 고객별 구매 요약, 최대 50명. */
+  @Transactional(readOnly = true)
+  public Summaries customerSummaries(@Nullable String customerIds) {
+    customerStaff();
+    List<String> ids = PurchaseCountRules.customerIds(customerIds);
+    if (ids == null) {
+      throw new PmartException(
+          ErrorCode.VALIDATION_FAILED,
+          "customerIds 는 1~" + PurchaseCountRules.MAX_SUMMARY_CUSTOMERS + "개여야 합니다.");
+    }
+    Instant since =
+        PurchaseCountRules.recentAmountSince(
+            LocalDate.now(clock.withZone(OrderMetricsRules.SEOUL)));
+    return new Summaries(since, store.customerSummaries(ids, since), ids);
+  }
+
+  /** O-12: 직원 — 마지막 구매일(한국 날짜, 둘 다 포함) 기간으로 고객 찾기. */
+  @Transactional(readOnly = true)
+  public LastOrders customersByLastOrder(
+      @Nullable LocalDate from,
+      @Nullable LocalDate to,
+      @Nullable Integer size,
+      @Nullable String cursor) {
+    customerStaff();
+    String problem = PurchaseCountRules.lastOrderRangeProblem(from, to);
+    if (problem != null) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, problem);
+    }
+    PurchaseCountRules.Cursor after = PurchaseCountRules.decodeCursor(cursor);
+    if (cursor != null && !cursor.isBlank() && after == null) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, "cursor 가 올바르지 않습니다.");
+    }
+    int n = size == null ? PurchaseCountRules.DEFAULT_PAGE_SIZE : size;
+    if (n < 1 || n > 200) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, "size 는 1~200 이어야 합니다.");
+    }
+    List<PurchaseHistoryStore.LastOrder> rows =
+        store.customersByLastOrder(
+            from == null ? null : from.atStartOfDay(OrderMetricsRules.SEOUL).toInstant(),
+            to == null ? null : to.plusDays(1).atStartOfDay(OrderMetricsRules.SEOUL).toInstant(),
+            after == null ? null : after.lastOrderAt(),
+            after == null ? null : after.customerId(),
+            n + 1);
+    boolean more = rows.size() > n;
+    List<PurchaseHistoryStore.LastOrder> page = more ? rows.subList(0, n) : rows;
+    String next =
+        more
+            ? PurchaseCountRules.encodeCursor(
+                new PurchaseCountRules.Cursor(
+                    page.get(n - 1).lastOrderAt(), page.get(n - 1).customerId()))
+            : null;
+    return new LastOrders(List.copyOf(page), next);
+  }
+
+  private static void customerStaff() {
+    boolean ok =
+        com.pmart.common.security.PmartPrincipal.current()
+            .filter(
+                p -> p.type() == com.pmart.common.security.PmartPrincipal.PrincipalType.OPERATOR)
+            .map(p -> PurchaseCountRules.customerStaff(p.roles()))
+            .orElse(false);
+    if (!ok) {
+      throw new PmartException(ErrorCode.FORBIDDEN, "고객 구매 요약 권한이 없습니다(CS_AGENT·OPERATOR_ADMIN).");
+    }
+  }
 }

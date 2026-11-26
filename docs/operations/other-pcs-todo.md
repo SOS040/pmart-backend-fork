@@ -158,6 +158,7 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
 - 주의: PC 4 에 게이트웨이·설정 서버·Eureka 가 있다 — 무거운 빌드·시험 중 LAN 이 느려지면 PC 1 에 알린다. 배포·LAN 재색인은 PC 1 — PR 에 "재색인 필요"를 적는다
 
 ## PC 2 — backoffice 영역(사용자 확정 2026-11-13, 로그인 마무리 뒤 시작)
+- [ ] **O-12 고객별 구매 요약·마지막 구매일 찾기 받아 쓰기**(2026-11-26 PC 1 — order 0.25.0, 회신 `docs/handoff/clients/backoffice/2026-11-26-reply-o12-customer-purchase-summaries.md`): `customer-summaries`(50명)·`customer-ids`(마지막 구매일 기간). 분류 이름(신규·우수·휴면·위험)은 bff. 정의는 O-13 과 같음(취소 빼고, 환불 안 뺌). LAN 배포는 회신 문서 상태 줄.
 - [ ] **O-13 고객 구매 지표 받아 쓰기**(2026-11-26 PC 1 — order 0.24.0 LAN 배포, 회신 `docs/handoff/clients/backoffice/2026-11-26-reply-o13-customer-purchase-metrics.md`): `GET /orders/metrics/customers`(첫 구매 기준·기간 끝까지, 분자·분모만 — 재구매율·이탈률·평균 구매 횟수는 화면/bff 계산). 고객 한 명 칸은 O-12 때.
 - [ ] **R-16 고객 오배송 문의 → 채팅 선택 → MisdeliveryConfirmed**(2026-11-24 PC 1 — ADR-0086, 요청서 `case-service.md` R-16): NOT_RECEIVED + 전달 완료 배송이면 오배송 사건 자동, 고객 문의 채팅·선택 API·5시간 자동 환불, 통합 백오피스 처리 화면
 - [x] **BF-4·R-12 센터 거르기**(2026-11-23 PC 1 — 사용자 "주문에 붙은 것만", 통합 백오피스 센터 고르기 #390): bff `views/claims`·`views/rider-complaints`·`views/pending-work`·`work-counts` `centerId`, case `rider-complaints/counts`·`obligations` `centerId`. 클레임 원천 CL-8 은 PC 1. — **bff 1차 구현**(2026-11-23 bff 0.24.0: claims·pending-work·work-counts), case R-12 구현(2026-11-23 case 0.33.0), bff 2차 rider-complaints(2026-11-23 bff 0.25.0) — **끝**

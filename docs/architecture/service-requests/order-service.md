@@ -106,6 +106,7 @@
 - **사용자 결정(2026-11-23) 고객 분류**: 신규 = 가입 1달 이내 · 우수 = 3개월 안 구매금액 100만원 이상 · 휴면 = 1년 동안 구매 없음 · 위험 = 6개월 이상 구매 없음 · 그 밖 일반. (가입일은 customer, 구매는 order — bff 가 둘을 합쳐 이름을 붙인다)
 - **확정(2026-11-23 사용자 "요청서대로 진행해")**: 휴면(1년 구매 없음)과 위험(6개월 이상 구매 없음)이 겹치면 **휴면** — 위험 = 마지막 구매가 6개월~1년 전.
 - **필요한 것**: 고객 ID 여러 개(50개)로 `{customerId, lastOrderAt, orderCount, amount3m}`(구매 = 확정 주문, 금액 = 승인 금액 — O-8 과 같은 정의, 환불 빼는지 알려 주세요). 목록 거르기용으로 "마지막 구매일 기간" 으로 고객 ID 를 찾는 길도.
+- **구현(2026-11-26 PC 1, 사용자 "고객별 남은거 해줘", 계약 0.25.0)**: `GET /orders/metrics/customer-summaries?customerIds=`(1~50, CS_AGENT·OPERATOR_ADMIN) → `{amountSince, items[{customerId, orderCount, totalAmount, amount3m, firstOrderAt, lastOrderAt}]}`(요청 순서, 산 것 없으면 0·null — O-13 고객 한 명 칸 포함), `GET /orders/metrics/customer-ids?lastOrderFrom=&lastOrderTo=`(한국 날짜 포함, 마지막 구매 최근 순, 커서). **정의는 요청서의 "확정 주문·승인 금액" 대신 O-13 과 같은 "산 것"**(취소·만료 주문 빼고 — 취소된 주문을 산 것으로 세면 분류가 틀어짐, 금액 = 줄 금액 − 할인 분담, 배달팁·봉투 빼고). **환불은 빼지 않는다**(claim 이 따로). amount3m = 오늘(Asia/Seoul) 3개월 전 날짜 0시부터. 시험 `PurchaseHistoryIT.customerSummariesAndLastOrderSearch`. LAN 배포 전.
 
 ## O-13. 고객 분석 지표 — 구매 빈도·누적 구매액·재구매율·이탈률 (2026-11-23, 보낸 영역 backoffice — PC 2, 사용자 "고객관리" 목록 — "그 세션에 바로 보내")
 - **사용자 결정(2026-11-23)**: **이탈률 = 한 번 사고 다시는 안 산 고객의 비율**.

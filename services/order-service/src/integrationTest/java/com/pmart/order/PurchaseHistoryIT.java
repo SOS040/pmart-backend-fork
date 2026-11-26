@@ -247,6 +247,107 @@ class PurchaseHistoryIT extends PostgresKafkaContainerSupport {
         .isEqualTo(400);
   }
 
+  /**
+   * O-12: 고객별 요약(요청 순서·중복 한 번·산 것 없으면 0, 취소 빼고, 최근 3개월 금액), 마지막 구매일 기간 찾기(한국 날짜·커서). CS_AGENT·
+   * OPERATOR_ADMIN 만.
+   */
+  @Test
+  void customerSummariesAndLastOrderSearch() {
+    String tag = UUID.randomUUID().toString().substring(0, 6);
+    String a = "ACC-S-A-" + tag;
+    String b = "ACC-S-B-" + tag;
+    String c = "ACC-S-C-" + tag;
+    String d = "ACC-S-D-" + tag;
+    String e = "ACC-S-E-" + tag;
+    String f = "ACC-S-F-" + tag;
+    String mfc = "MFC-S";
+    order(a, mfc, "COMPLETED", Instant.parse("2016-05-10T03:00:00Z"), line(10_000, 1, 0));
+    order(a, mfc, "COMPLETED", Instant.parse("2016-05-20T03:00:00Z"), line(12_000, 2, 1));
+    order(b, mfc, "COMPLETED", Instant.parse("2016-05-15T03:00:00Z"), line(5_000, 1, 0));
+    order(b, mfc, "CANCELLED", Instant.parse("2016-05-25T03:00:00Z"), line(9_000, 1, 0));
+    order(
+        c, mfc, "COMPLETED", Instant.parse("2016-04-30T15:30:00Z"), line(3_000, 1, 0)); // 05-01 KST
+    order(
+        d, mfc, "COMPLETED", Instant.parse("2016-04-30T14:30:00Z"), line(3_000, 1, 0)); // 04-30 KST
+    order(e, mfc, "COMPLETED", Instant.parse("2016-05-05T03:00:00Z"), line(2_000, 1, 0));
+    Instant recent = Instant.now().minus(10, ChronoUnit.DAYS);
+    order(e, mfc, "COMPLETED", recent, line(7_000, 1, 0));
+
+    JsonNode sum =
+        ok(
+            CS,
+            "/orders/metrics/customer-summaries?customerIds="
+                + a
+                + ","
+                + e
+                + ","
+                + f
+                + ","
+                + a
+                + ", ");
+    assertThat(sum.path("amountSince").asString()).isNotEmpty();
+    JsonNode items = sum.path("items");
+    assertThat(items.findValuesAsString("customerId")).containsExactly(a, e, f);
+    assertThat(items.path(0).path("orderCount").asInt()).isEqualTo(2);
+    assertThat(items.path(0).path("totalAmount").asLong()).isEqualTo(16_000);
+    assertThat(items.path(0).path("amount3m").asLong()).isZero();
+    assertThat(Instant.parse(items.path(0).path("firstOrderAt").asString()))
+        .isEqualTo(Instant.parse("2016-05-10T03:00:00Z"));
+    assertThat(Instant.parse(items.path(0).path("lastOrderAt").asString()))
+        .isEqualTo(Instant.parse("2016-05-20T03:00:00Z"));
+    assertThat(items.path(1).path("orderCount").asInt()).isEqualTo(2);
+    assertThat(items.path(1).path("totalAmount").asLong()).isEqualTo(9_000);
+    assertThat(items.path(1).path("amount3m").asLong()).isEqualTo(7_000);
+    assertThat(items.path(2).path("orderCount").asInt()).isZero();
+    assertThat(items.path(2).path("totalAmount").asLong()).isZero();
+    assertThat(
+            items.path(2).path("lastOrderAt").isNull()
+                || items.path(2).path("lastOrderAt").isMissingNode())
+        .isTrue();
+    // 취소 주문은 세지 않는다
+    JsonNode bs =
+        ok(ADMIN, "/orders/metrics/customer-summaries?customerIds=" + b).path("items").path(0);
+    assertThat(bs.path("orderCount").asInt()).isEqualTo(1);
+    assertThat(bs.path("totalAmount").asLong()).isEqualTo(5_000);
+
+    // 5월(한국 날짜)에 마지막으로 산 고객: a(05-20) → b(05-15, 25일 취소는 안 셈) → c(05-01 00:30 KST). d 는 04-30, e 는
+    // 최근
+    String may = "/orders/metrics/customer-ids?lastOrderFrom=2016-05-01&lastOrderTo=2016-05-31";
+    JsonNode p1 = ok(CS, may + "&size=2");
+    assertThat(p1.path("items").findValuesAsString("customerId")).containsExactly(a, b);
+    String next = p1.path("page").path("nextCursor").asString();
+    assertThat(next).isNotEmpty();
+    JsonNode p2 = ok(CS, may + "&size=2&cursor=" + next);
+    assertThat(p2.path("items").findValuesAsString("customerId")).containsExactly(c);
+    assertThat(p2.path("page").path("nextCursor").isNull()).isTrue();
+    assertThat(
+            ok(CS, "/orders/metrics/customer-ids?lastOrderTo=2016-04-30&size=200")
+                .path("items")
+                .findValuesAsString("customerId"))
+        .contains(d)
+        .doesNotContain(a, b, c, e);
+
+    // 권한·검사
+    String sup = TestJwt.operator("sv-s", List.of("MFC_SUPERVISOR"), List.of(mfc));
+    String riderOps = TestJwt.operator("ro-s", List.of("RIDER_OPS"), List.of());
+    assertThat(status(sup, "/orders/metrics/customer-summaries?customerIds=" + a)).isEqualTo(403);
+    assertThat(status(riderOps, may)).isEqualTo(403);
+    assertThat(status(TestJwt.customer(a), "/orders/metrics/customer-summaries?customerIds=" + a))
+        .isEqualTo(403);
+    StringBuilder many = new StringBuilder();
+    for (int i = 0; i < 51; i++) {
+      many.append(i == 0 ? "" : ",").append("ACC-").append(i);
+    }
+    assertThat(status(CS, "/orders/metrics/customer-summaries?customerIds=" + many)).isEqualTo(400);
+    assertThat(status(CS, "/orders/metrics/customer-summaries?customerIds=,")).isEqualTo(400);
+    assertThat(status(CS, "/orders/metrics/customer-ids")).isEqualTo(400);
+    assertThat(
+            status(
+                CS, "/orders/metrics/customer-ids?lastOrderFrom=2016-06-01&lastOrderTo=2016-05-01"))
+        .isEqualTo(400);
+    assertThat(status(CS, may + "&cursor=@@bad")).isEqualTo(400);
+  }
+
   // ---------- 도우미 ----------
 
   ResponseEntity<String> call(String token, String path) {

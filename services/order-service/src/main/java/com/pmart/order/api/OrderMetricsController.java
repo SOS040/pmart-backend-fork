@@ -29,6 +29,68 @@ public class OrderMetricsController implements OrderMetricsApi {
     this.purchases = purchases;
   }
 
+  /** 0.25.0 O-12 고객별 구매 요약 — 요청 순서, 산 것이 없는 고객도 0. */
+  @Override
+  public ResponseEntity<com.pmart.order.api.generated.model.CustomerPurchaseSummaries>
+      getCustomerPurchaseSummaries(String customerIds) {
+    var r = purchases.customerSummaries(customerIds);
+    java.util.Map<String, com.pmart.order.infrastructure.PurchaseHistoryStore.CustomerSummary> by =
+        new java.util.HashMap<>();
+    r.found().forEach(x -> by.put(x.customerId(), x));
+    return ResponseEntity.ok(
+        new com.pmart.order.api.generated.model.CustomerPurchaseSummaries()
+            .amountSince(utc(r.recentSince()))
+            .items(
+                r.ids().stream()
+                    .map(
+                        id -> {
+                          var x = by.get(id);
+                          var item =
+                              new com.pmart.order.api.generated.model
+                                      .CustomerPurchaseSummariesItemsInner()
+                                  .customerId(id);
+                          if (x == null) {
+                            return item.orderCount(0).totalAmount(0L).amount3m(0L);
+                          }
+                          return item.orderCount(x.orderCount())
+                              .totalAmount(x.totalAmount())
+                              .amount3m(x.recentAmount())
+                              .firstOrderAt(utc(x.firstOrderAt()))
+                              .lastOrderAt(utc(x.lastOrderAt()));
+                        })
+                    .toList()));
+  }
+
+  /** 0.25.0 O-12 마지막 구매일 기간으로 고객 찾기. */
+  @Override
+  public ResponseEntity<com.pmart.order.api.generated.model.FindCustomersByLastOrder200Response>
+      findCustomersByLastOrder(
+          @Nullable LocalDate lastOrderFrom,
+          @Nullable LocalDate lastOrderTo,
+          @Nullable Integer size,
+          @Nullable String cursor) {
+    var r = purchases.customersByLastOrder(lastOrderFrom, lastOrderTo, size, cursor);
+    return ResponseEntity.ok(
+        new com.pmart.order.api.generated.model.FindCustomersByLastOrder200Response()
+            .items(
+                r.items().stream()
+                    .map(
+                        x ->
+                            new com.pmart.order.api.generated.model
+                                    .FindCustomersByLastOrder200ResponseItemsInner()
+                                .customerId(x.customerId())
+                                .lastOrderAt(utc(x.lastOrderAt())))
+                    .toList())
+            .page(
+                new com.pmart.order.api.generated.model.ListOrders200ResponsePage()
+                    .nextCursor(r.nextCursor())
+                    .size(size == null ? 50 : size)));
+  }
+
+  private static java.time.OffsetDateTime utc(java.time.Instant i) {
+    return java.time.OffsetDateTime.ofInstant(i, java.time.ZoneOffset.UTC);
+  }
+
   /** 0.24.0 O-13 고객 구매 지표(첫 구매 기준) — 분자·분모만. */
   @Override
   public ResponseEntity<com.pmart.order.api.generated.model.CustomerPurchaseMetrics>
