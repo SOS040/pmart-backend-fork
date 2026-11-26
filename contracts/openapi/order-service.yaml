@@ -1,8 +1,9 @@
 openapi: 3.1.0
 info:
   title: order-service
-  version: 0.26.0
+  version: 0.26.1
   description: |
+    0.26.1(2026-11-26, ADR-0090 A4): 내부 `GET /internal/orders/{orderId}` 줄에 `freeQuantity`(수량 행사 무료분) — claim 이 묶음 단위 반품을 판정한다.
     0.26.0(2026-11-26, ADR-0090 수량 행사 1+1·2+1): 주문 초안 품목 `quantity` 는 **유상 수량**(고객이 고른 수). 수량 행사가 걸리면 pricing 견적이 무료 수량을 더해
       초안·주문 줄 `quantity` = **총 수량**(재고 확인·예약·피킹·무게·구매 한도는 이 수), `paidQuantity`·`freeQuantity`·`offerPromotionId` 따로, 무료분은 `discountShare` 에 들어 있다.
       재고가 총 수량보다 적으면 다른 품절과 같이 422 `INSUFFICIENT_STOCK`(무료분을 줄여 주지 않음 — A3). 행사가 없는 줄은 paid = quantity, free 0.
@@ -1107,6 +1108,7 @@ components:
               deliveredQty: { type: integer, description: '0.7.0 — 전달 완료 수량. 0.7.1(2026-11-16, O-1) DeliveryCompleted 반영으로 채워진다' }
               returnedQty: { type: integer, description: '0.7.0 — 반품 완료 수량. 0.11.2(2026-11-17, O-7) claim 반품 종결(검수·환불 끝 — 받은 만큼만 끝내기 포함)로 채워진다. review 가 "받은 수량 전부 반품" 판정에 쓴다' }
               reshippedQty: { type: integer, description: '0.9.0(2026-11-16) — 오배송 재발송 수량 누계. 불변식 원수량 + 재발송 = 미이행 + 인계 + 출고 전 취소, 보낼 수량 = 원수량 − 출고 전 취소 + 재발송' }
+              freeQuantity: { type: integer, x-added-in: '2026-11-26', description: '0.26.1 ADR-0090 — 수량 행사 무료 수량(originalQty 에 포함, 없으면 0). claim 묶음 단위 반품 판정용' }
     OrderStatus:
       type: string
       enum: [DRAFT, RESOURCE_PENDING, PAYMENT_PENDING, PAYMENT_UNKNOWN, CONFIRMED, PREPARING, PARTIALLY_HANDED_OVER, IN_DELIVERY, PARTIALLY_DELIVERED, COMPLETED, CANCELLED, EXPIRED]

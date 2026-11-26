@@ -165,7 +165,8 @@ public class ReturnService {
               l.path("unitPrice").asLong(),
               l.path("originalQty").asInt(),
               l.path("deliveredQty").asInt(0), // 전달 완료 수량(2026-11-17 — 배달 중 반품 불가)
-              l.path("discountShare").asLong(0)));
+              l.path("discountShare").asLong(0),
+              l.path("freeQuantity").asInt(0))); // ADR-0090 A4 묶음 단위
     }
     String claimId =
         idempotency

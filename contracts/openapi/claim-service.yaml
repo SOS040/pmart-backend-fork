@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: claim-service
-  version: 0.15.0
+  version: 0.15.1
   description: |
     0.14.0(2026-11-24 BR-92 — 고객 앱 요청 "취소·반품 내역에 상품이 SKU 로 보여"): `ClaimLine` 에 접수 때의 주문 품목 사본 `productName`·`optionLabel`·`imageUrl`
       (order 내부 원장 — 이름·옵션은 주문 당시 사본, 사진은 접수 때의 대표 사진). 이름 사본이 없는 옛 주문(2026-11-02 이전)·이 판 전에 접수된 클레임·사진 조회 실패는 null.
@@ -68,7 +68,7 @@ paths:
         [2026-11-17 구현, 0.2.0 — CL-1·D-7·ADR-0060 결정 2] **인계 뒤 회수(type RETURN)는 고객센터만** 접수한다. 흐름 정본 docs/business/flows/return-exchange-refund.md §6.
         - 직원 토큰(OPERATOR) + 역할 CS_AGENT·OPERATOR_ADMIN(그 밖 403). 직원은 RETURN 과 아래 CANCEL(0.4.0)만(EXCHANGE 422 UNSUPPORTED_ACTION). 고객 토큰의 RETURN 은 422 UNSUPPORTED_ACTION(고객센터로 문의).
         - identityCheck 필수(본인 확인 방법만 기록 — case CS 접수와 같은 값, OTHER 면 note 필수). channel 은 CS(기본)·OPERATOR.
-        - order `GET /internal/orders/{id}` 로 심사: 없는 주문 404, 행마다 요청 ≤ **전달 완료 수량(deliveredQty — 2026-11-17 사용자 "배달 중이나 전달 완료 전에는 반품 불가")** − 이 주문의 진행·완료 반품 수량(취소된 반품 제외). 전달 완료된 수량이 없으면 422 NOT_DELIVERED_YET, 넘으면 QUANTITY_EXCEEDS_AVAILABLE. 접수 기한(7일·24시간)은 아직 보지 않는다(상담원 판단).
+        - order `GET /internal/orders/{id}` 로 심사: 없는 주문 404, 행마다 요청 ≤ **전달 완료 수량(deliveredQty — 2026-11-17 사용자 "배달 중이나 전달 완료 전에는 반품 불가")** − 이 주문의 진행·완료 반품 수량(취소된 반품 제외). 전달 완료된 수량이 없으면 422 NOT_DELIVERED_YET, 넘으면 QUANTITY_EXCEEDS_AVAILABLE. 수량 행사(1+1·2+1) 줄은 묶음 단위로만 — 원수량 ÷ gcd(유상, 무료)의 배수가 아니면 422 RETURN_BUNDLE_REQUIRED(ADR-0090 A4, 2026-11-26). 접수 기한(7일·24시간)은 아직 보지 않는다(상담원 판단).
         - faultCode(회사 잘못 — 오배송·상품 불량·배송 중 파손·약속 시간 크게 지연·잘못된 대체)가 있으면 **회수비 면제** → 바로 IN_PROGRESS + 회수 요청(ReturnPickupRequested).
           없으면(고객 사유) **회수비 9,000원**(상품 환불과 따로 결제) → FEE_PENDING, 결제 시도를 만들고 ReturnFeePaymentRequested. 고객이 앱에서 결제하면 IN_PROGRESS + 회수 요청.
           기한(`pmart.claim.return-fee-payment-wait`, 접수 + 이 시간 — 사용자 확정 24시간) 안에 결제하지 않으면 CANCELLED. 설정이 없으면 회수비 있는 접수만 422 CONFIG_REQUIRED.
@@ -97,7 +97,7 @@ paths:
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
         '409': { $ref: '_common.yaml#/components/responses/Conflict' }
         '422':
-          description: CLAIM_WINDOW_EXPIRED / QUANTITY_EXCEEDS_AVAILABLE / DUPLICATE_CLAIM / NOT_DELIVERED_YET / EVIDENCE_REQUIRED / ORDER_NOT_CANCELLABLE / PARTIAL_CANCEL_NOT_ALLOWED (고객 취소는 주문 전체만) / UNSUPPORTED_ACTION (고객 RETURN·직원 CANCEL·EXCHANGE) / NOT_HANDED_OVER (RETURN — 인계된 수량 없음, 0.2.0) / CONFIG_REQUIRED (RETURN 회수비 결제 기한 미설정, 0.2.0)
+          description: CLAIM_WINDOW_EXPIRED / QUANTITY_EXCEEDS_AVAILABLE / RETURN_BUNDLE_REQUIRED (1+1·2+1 줄 묶음 단위 아님, ADR-0090) / DUPLICATE_CLAIM / NOT_DELIVERED_YET / EVIDENCE_REQUIRED / ORDER_NOT_CANCELLABLE / PARTIAL_CANCEL_NOT_ALLOWED (고객 취소는 주문 전체만) / UNSUPPORTED_ACTION (고객 RETURN·직원 CANCEL·EXCHANGE) / NOT_HANDED_OVER (RETURN — 인계된 수량 없음, 0.2.0) / CONFIG_REQUIRED (RETURN 회수비 결제 기한 미설정, 0.2.0)
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }

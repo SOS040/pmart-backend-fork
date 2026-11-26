@@ -135,7 +135,36 @@ public final class ReturnRules {
       long unitPrice,
       int originalQty,
       int deliveredQty,
-      long discountShare) {}
+      long discountShare,
+      // ADR-0090 A4(2026-11-26): 수량 행사 무료분(originalQty 에 포함, order 0.26.1 — 그 전 0)
+      int freeQuantity) {
+
+    public OrderLine(
+        String orderLineId,
+        String sku,
+        long unitPrice,
+        int originalQty,
+        int deliveredQty,
+        long discountShare) {
+      this(orderLineId, sku, unitPrice, originalQty, deliveredQty, discountShare, 0);
+    }
+  }
+
+  /**
+   * 수량 행사 줄의 반품 묶음 크기(ADR-0090 A4 — 묶음 단위로만). 유상·무료를 같은 비율로 나눌 수 있는 가장 작은 수 = 원수량 ÷ gcd(유상, 무료).
+   * 1+1 유상 3·무료 3 → 2, 2+1 유상 4·무료 2 → 3, 짝이 안 맞는 유상(2+1 에 5개 → 무료 2) → 원수량 전체. 무료가 없으면 1.
+   */
+  public static int bundleSize(int originalQty, int freeQuantity) {
+    if (freeQuantity <= 0 || originalQty <= 0) {
+      return 1;
+    }
+    int paid = Math.max(0, originalQty - freeQuantity);
+    int g =
+        java.math.BigInteger.valueOf(paid)
+            .gcd(java.math.BigInteger.valueOf(freeQuantity))
+            .intValue();
+    return g <= 0 ? originalQty : originalQty / g;
+  }
 
   /** 요청 행. */
   public record Requested(String orderLineId, int qty) {}
@@ -172,6 +201,12 @@ public final class ReturnRules {
       if (l.deliveredQty() == 0) {
         throw new ClaimRules.Rejection(
             "NOT_DELIVERED_YET", "아직 전달 완료되지 않은 상품입니다: " + r.orderLineId());
+      }
+      int bundle = bundleSize(l.originalQty(), l.freeQuantity());
+      if (bundle > 1 && r.qty() % bundle != 0) {
+        throw new ClaimRules.Rejection(
+            "RETURN_BUNDLE_REQUIRED",
+            "1+1·2+1 상품은 함께 받은 무료 상품까지 묶음(" + bundle + "개) 단위로만 반품할 수 있습니다: " + r.orderLineId());
       }
       if (r.qty() > available) {
         throw new ClaimRules.Rejection(

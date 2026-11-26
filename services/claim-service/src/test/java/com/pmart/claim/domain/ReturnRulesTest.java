@@ -228,4 +228,25 @@ class ReturnRulesTest {
     assertThat(ClaimRules.paymentReason("RETURN")).isEqualTo("RETURN");
     assertThat(ClaimRules.paymentReason("CANCEL_BEFORE_SHIP")).isEqualTo("CANCEL_BEFORE_SHIP");
   }
+
+  /** ADR-0090 A4: 수량 행사 줄은 묶음 단위로만 — 1+1(6개 중 무료 3)은 2개씩, 2+1(6개 중 무료 2)은 3개씩, 무료 없으면 1개씩. */
+  @org.junit.jupiter.api.Test
+  void quantityOfferLinesReturnOnlyInBundles() {
+    assertThat(ReturnRules.bundleSize(6, 3)).isEqualTo(2);
+    assertThat(ReturnRules.bundleSize(6, 2)).isEqualTo(3);
+    assertThat(ReturnRules.bundleSize(7, 2)).isEqualTo(7);
+    assertThat(ReturnRules.bundleSize(5, 0)).isEqualTo(1);
+    var lines = List.of(new OrderLine("L1", "E-00000001", 1_900, 6, 6, 5_700, 3));
+    ReturnRules.checkReturnable(
+        lines, List.of(new ReturnRules.Requested("L1", 2)), java.util.Map.of());
+    ReturnRules.checkReturnable(
+        lines, List.of(new ReturnRules.Requested("L1", 6)), java.util.Map.of());
+    org.assertj.core.api.Assertions.assertThatThrownBy(
+            () ->
+                ReturnRules.checkReturnable(
+                    lines, List.of(new ReturnRules.Requested("L1", 1)), java.util.Map.of()))
+        .isInstanceOf(ClaimRules.Rejection.class)
+        .extracting(e -> ((ClaimRules.Rejection) e).code())
+        .isEqualTo("RETURN_BUNDLE_REQUIRED");
+  }
 }

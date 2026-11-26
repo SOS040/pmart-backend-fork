@@ -230,7 +230,8 @@ public class InternalController implements InternalApi {
               .imageUrl(l.productId() == null ? null : v.images().get(l.productId()))
               .deliveredQty(l.deliveredQty())
               .returnedQty(l.returnedQty())
-              .reshippedQty(l.reshippedQty()));
+              .reshippedQty(l.reshippedQty())
+              .freeQuantity(l.freeQuantity()));
     }
     return ResponseEntity.ok(out);
   }
