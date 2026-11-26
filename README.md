@@ -17,6 +17,31 @@ PMart 프로젝트 전체 소개와 다른 저장소(앱·설정·시뮬레이�
 
 서비스별 책임 경계는 `docs/architecture/service-map.md`, 기술 스택은 `docs/architecture/tech-stack.md`.
 
+## 핵심 설계
+| 주제 | 방식 | 근거 |
+|---|---|---|
+| 여러 서비스에 걸친 거래 | 주문·취소·시간 변경은 `order-orchestration-service` 가 사가로 조정(보상 포함), 확정 사실은 이벤트로 전파. 2PC 없음 | `docs/adr/0003-order-saga-orchestration.md`, `docs/business/flows/` |
+| 이벤트 발행·소비 | Outbox(같은 트랜잭션) → Debezium → Kafka(KRaft 3노드), 소비는 Spring Cloud Stream + Inbox 멱등, 실패는 DLT + `dead_letter` 재처리 API | ADR-0035·0037, `docs/architecture/events.md` |
+| 계약 | REST = `contracts/openapi/`(코드 생성), 이벤트 = `contracts/events/` JSON Schema(발행 전 검증, 필드 추가만) | ADR-0009 |
+| 데이터 소유 | 서비스마다 자기 DB·Flyway. 다른 서비스 테이블 접근 금지 — API 또는 이벤트만 | `.claude/rules/service-architecture.md` |
+| 설정 | Spring Cloud Config(정본 [pmart-config](https://github.com/code-and-pick/pmart-config)), 서비스 `application.yml` 은 부트스트랩만, 비밀값은 `{cipher}` | ADR-0029 |
+| 인증 | 고객 `auth-service`(소셜 로그인)·라이더 `rider-auth-service`·직원 `employee-auth-service`(Keycloak), 게이트웨이가 사용자 종류별 접근 확인 | ADR-0054·0056 |
+| 최적화 | 배차·MFC 작업 배정·피킹 순서 = Google OR-Tools(CP-SAT·Routing, JVM 유지) | ADR-0053 |
+| 검색·AI | Elasticsearch(형태소·초성·동의어·오타 교정) + 벡터 의미 검색, RAG AI 상담(Ollama·pgvector) | ADR-0072·0073·0088·0051 |
+| 관측 | JSON 로그 → Elastic Stack, Micrometer → Prometheus·Grafana, OpenTelemetry → Zipkin | ADR-0030·0031 |
+| 이미지·배포 | Jib(Dockerfile 없음) → Docker Hub(git SHA 태그, digest 로 배포), LAN 5대 배포 스크립트 `deploy/lan/` | ADR-0012·0028 |
+
+```mermaid
+flowchart LR
+    App[앱 · 백오피스] --> GW[api-gateway]
+    GW --> SVC[업무 서비스]
+    SVC -->|같은 트랜잭션| OB[(outbox)]
+    OB --> DBZ[Debezium] --> K{{Kafka}}
+    K --> IN[구독 서비스<br/>Inbox 멱등]
+    K -.재시도 소진.-> DLT[(DLT · dead_letter)]
+    CFG[config-server] -.설정.-> SVC
+```
+
 ## 시작하기
 ```bash
 ./gradlew build                         # 전체 (Windows: .\gradlew.bat)
@@ -40,5 +65,10 @@ PMart 프로젝트 전체 소개와 다른 저장소(앱·설정·시뮬레이�
 
 ---
 
-- 동성인재개발교육원 — https://www.dshrd.or.kr/
-- 지도: 서성원 훈련 교사
+<div align="center">
+
+**동성인재개발교육원** — https://www.dshrd.or.kr/
+
+지도: 서성원 훈련 교사
+
+</div>
