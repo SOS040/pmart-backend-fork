@@ -149,3 +149,11 @@ docs/                업무 정책 · 아키텍처 · ADR · 흐름 · 작업 �
 | 전소영 | OMS | AI 상담(RAG) |
 
 앱·웹 담당까지 넣은 전체 팀 구성은 [code-and-pick](https://github.com/code-and-pick#팀) 에 있습니다.
+
+---
+
+<div align="center">
+
+<sub><a href="https://www.dshrd.or.kr/">동성인재개발교육원</a> · 지도: 서성원 훈련 교사</sub>
+
+</div>
