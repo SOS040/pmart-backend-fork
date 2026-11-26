@@ -30,3 +30,4 @@
 ## 진행
 - 2026-11-26 결정·이 문서.
 - 2026-11-26 1+1 서버 1~3단계(커밋만, LAN 배포 전 — pricing·order 는 함께 배포해야 한다): promotion 0.5.0(행사 종류·내부 조회·+1 하나더 목록), pricing 0.4.0(견적 무료 수량), order 0.26.0(유상·무료·총 수량, 총 수량 재고 확인). 남은 것: 표시(장바구니·상품 카드 1+1 배지 — pricing `/prices`·검색·홈), claim 묶음 단위 반품(A4), 고객앱·백오피스 화면 요청.
+- 2026-11-26 1+1 LAN 배포: promotion 0.5.0·pricing 0.4.1·order 0.26.0(b7f133f9) → 표시·장바구니 cart 0.6.0(75c365ad) → 묶음 단위 반품 order 0.26.1·claim 0.15.1(A4). 화면 요청: 고객앱 `docs/handoff/clients/customer-app/2026-11-26-request-quantity-offers-1plus1.md`, 백오피스 `docs/handoff/clients/backoffice/2026-11-26-request-quantity-offer-promotion-screen.md`. 남은 것: 마감세일(mfc-inventory LOT 지정 예약 — PC 3 요청부터).
