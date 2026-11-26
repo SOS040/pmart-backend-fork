@@ -566,10 +566,10 @@ public class DispatchStore {
       Instant now, java.time.Duration after, int limit) {
     return jdbc.query(
         "SELECT delivery_id, order_id FROM delivery WHERE type = 'FORWARD' AND state ="
-            + " 'DISPATCHING' AND rider_id IS NULL AND promised_at IS NOT NULL AND promised_at <= ?"
+            + " 'DISPATCHING' AND rider_id IS NULL AND created_at <= ?"
             + " AND order_id IS NOT NULL AND auto_cancel_result IS NULL AND (auto_cancel_retry_at"
             + " IS NULL OR auto_cancel_retry_at <= ?) AND (handed_over_packages IS NULL OR"
-            + " handed_over_packages::text IN ('[]', 'null')) ORDER BY promised_at LIMIT ?",
+            + " handed_over_packages::text IN ('[]', 'null')) ORDER BY created_at LIMIT ?",
         (rs, i) -> new AutoCancelTarget(rs.getString(1), rs.getString(2)),
         ts(now.minus(after)),
         ts(now),

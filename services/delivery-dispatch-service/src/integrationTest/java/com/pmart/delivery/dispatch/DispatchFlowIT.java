@@ -1580,11 +1580,11 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
   }
 
   /**
-   * 배차 불가 자동 취소(2026-11-20 사용자 "쿠폰 안 되면 자동취소만", "약속+30분"): 약속 + 30분이 지나도 라이더 없는 고객 배송 → claim 시스템
-   * 취소(DISPATCH_UNAVAILABLE) 한 번. 30분 전이면 부르지 않는다.
+   * 배차 불가 자동 취소(2026-11-26 사용자 "배차 시작 + 20분" — 전에는 약속 + 30분): 배차 요청(배송 생성) + 20분이 지나도 라이더 없는 고객
+   * 배송 → claim 시스템 취소(DISPATCH_UNAVAILABLE) 한 번. 20분 전이면 부르지 않는다(약속 시각은 보지 않는다).
    */
   @Test
-  void undispatchedDeliveryIsAutoCancelledAfterPromisePlus30Minutes() {
+  void undispatchedDeliveryIsAutoCancelled20MinutesAfterDispatchRequest() {
     String mfc = "MFC-D29";
     riders(mfc);
     String deliveryId =
@@ -1601,8 +1601,11 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
                     .withBody("{\"claimId\":\"CLM-IT\",\"orderId\":\"" + orderId + "\"}")));
     engine.tick();
     jdbc.update(
-        "UPDATE delivery SET promised_at = ? WHERE delivery_id = ?", ago(25 * 60), deliveryId);
-    engine.tick(); // 약속 + 25분 — 아직
+        "UPDATE delivery SET created_at = ?, promised_at = ? WHERE delivery_id = ?",
+        ago(15 * 60),
+        ago(60 * 60),
+        deliveryId);
+    engine.tick(); // 배차 요청 + 15분 — 약속이 한참 지났어도 아직
     assertThat(
             jdbc.queryForObject(
                 "SELECT auto_cancel_result FROM delivery WHERE delivery_id = ?",
@@ -1610,7 +1613,11 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
                 deliveryId))
         .isNull();
     jdbc.update(
-        "UPDATE delivery SET promised_at = ? WHERE delivery_id = ?", ago(31 * 60), deliveryId);
+        "UPDATE delivery SET created_at = ?, promised_at = ? WHERE delivery_id = ?",
+        ago(21 * 60),
+        ago(-60 * 60),
+        deliveryId);
+    engine.tick(); // 배차 요청 + 21분 — 약속은 아직 한 시간 뒤여도 취소
     engine.tick();
     engine.tick(); // 두 번째 주기에는 다시 부르지 않는다
     assertThat(

@@ -38,8 +38,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *     LargeMfcBenchmarkTest)
  * @param failedReturnFallbackAfter 다른 라이더 반납(FAILURE_OTHER)을 이만큼 못 맡기면 원래 라이더에게 바로(2026-11-20 사용자
  *     "가"·"5분 안으로" — 기본 5분)
- * @param autoCancelAfter 배송 약속 시각 + 이만큼 지나도 라이더가 배정되지 않은 고객 배송은 claim 시스템 취소(DISPATCH_UNAVAILABLE)
- *     — 사용자 2026-11-20 "약속+30분", 기본 30분
+ * @param autoCancelAfter 배차 요청(배송 생성 — DispatchRequested) + 이만큼 지나도 라이더가 배정되지 않은 고객 배송은 claim 시스템
+ *     취소(DISPATCH_UNAVAILABLE) — 사용자 2026-11-26 "주문 넣고 배차 20분간 안 잡히면 자동 취소환불"·"배차 시작 + 20분"(전에는
+ *     약속 + 30분), 기본 20분
  * @param recoveryAbandonAfter 오배송 회수 배송(MISDELIVERY_RECOVERY)이 만들어진 지 이만큼 지나도 라이더 없이 배차 대기면 포기(픽업 전
  *     취소 RECOVERY_ABANDONED) — 사용자 2026-11-24 "하루 지나면 회수 배송 포기", 기본 24시간
  */
@@ -104,7 +105,7 @@ public record DispatchProperties(
     bundleNeighbors = bundleNeighbors == null ? 4 : bundleNeighbors;
     failedReturnFallbackAfter =
         failedReturnFallbackAfter == null ? Duration.ofMinutes(5) : failedReturnFallbackAfter;
-    autoCancelAfter = autoCancelAfter == null ? Duration.ofMinutes(30) : autoCancelAfter;
+    autoCancelAfter = autoCancelAfter == null ? Duration.ofMinutes(20) : autoCancelAfter;
     recoveryAbandonAfter =
         recoveryAbandonAfter == null ? Duration.ofHours(24) : recoveryAbandonAfter;
     urls = urls == null ? new Urls(null, null, null, null, null, null) : urls;
