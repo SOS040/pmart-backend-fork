@@ -4,7 +4,7 @@
 받는 앱: backoffice (backoffice-bff — PC 2)
 요청: 요청서 `docs/architecture/service-requests/customer-service.md` CU-5·CU-6(PC 2 #365, 2026-11-23)
 작성: pmart-backend PC 1, 2026-11-26 — 결정 2026-11-23 사용자 "추천대로", 2026-11-26 "다음 남은것처리해줘"
-상태: 구현·시험 통과. **LAN 배포 전**(배포되면 이 줄을 고친다)
+상태: **LAN 배포**(2026-11-26, 1d94ebb7 — pc2 customer-service V22, pc4 auth-service V11). LAN 확인: 목록 3개씩 두 쪽 겹침 0, 가입 11-20~26 38명, 이름 검색 200·audit SEARCH 기록 남음(검색어 없음), 1글자 400, auth activities 200(없는 계정 null)
 함께 볼 것: O-12 회신 `2026-11-26-reply-o12-customer-purchase-summaries.md`(최근 구매일·분류용 금액)
 
 ## CU-5 — `GET /api/v1/customers` 목록 모드 (customer-service 0.22.0)
