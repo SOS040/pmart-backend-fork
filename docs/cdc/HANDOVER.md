@@ -3,7 +3,7 @@
 CDC WMS 작업을 이어 받는 세션·사람이 **처음 읽는 문서**. 무엇이 있고, 무엇이 없고, 어디부터 읽는지를 모았다. 업무 원문·ADR·계약이 정본이고, 이 문서와 다르면 그쪽을 따른다.
 
 ## 0. 영역·세션
-- 영역: 따로 없음 — `docs/operations/pc-split.md` 상 "영역 밖 서비스"라 **platform(PC 1)** 몫. cdc 영역을 나누려면 pc-split·`docs/worklog/cdc/` 부터 사용자와 정한다.
+- 영역: **cdc**(2026-11-26 사용자 결정 — `docs/operations/pc-split.md` §1, 클라이언트 `pc-split.md` 와 같게). 2026-11-24~25 는 "영역 밖 서비스"라 platform 몫이었다. 일지는 아직 `docs/worklog/platform/`(`cdc/` 폴더로 나눌지는 사용자와 정한다). platform 주 세션은 2026-11-26 부터 cdc 서비스 코드를 직접 고치지 않는다(게이트웨이·설정·배포만).
 - 작업 세션(2026-11-24 사용자): PC 1 의 **D 드라이브 클론** `D:\development\pmart-project\pmart-backend-cdc` 에서 연다(C 쪽 주 작업 폴더와 따로). **모든 변경은 무조건 PR**(사용자 2026-11-24 — 본 작업 폴더가 아니라 충돌이 날 수 있어서): main 에 직접 커밋·push 하지 않고, 일마다 `origin/main` 에서 `cdc/<주제>` 브랜치 → PR 전 `git rebase origin/main`·시험 다시 → PR → PR 백엔드 세션 검토·병합. 공용 표는 PR 본문에 "공용 표 갱신 필요". 게이트웨이·pmart-config·LAN 배치·배포는 PC1 백엔드 세션.
 - 그 세션만의 규칙은 클론의 `CLAUDE.local.md`(커밋 안 함).
 
