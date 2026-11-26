@@ -89,3 +89,4 @@ CDC WMS 작업을 이어 받는 세션·사람이 **처음 읽는 문서**. 무�
 - 2026-11-26: **cdc-quality-service 새로 만듦**(0.2.0, 포트 8604, Flyway V2) — 보류·해제·폐기(사용자 "보류·해제·폐기만"·"MFC 품질과 같게"), 재고는 cdc-inventory quality-postings. PR `cdc/quality-service`. PC1: 설정 정본·LAN 배치·게이트웨이 라우트(pc1-todo). 다음: CI-1(cdc-inventory productName·실사 번호, PC5 요청), 리콜·운영 제한.
 - 2026-11-26: CI-1 cdc-inventory 0.17.0(Flyway V10) — productName(product internalName)·실사 sessionNumber C+6. PR `cdc/inventory-names-numbers`. PC1: product 주소 설정.
 - 2026-11-26: 리콜 1/3 — cdc-inventory 0.18.0(recall HOLD 출고대기까지·AllocationShortfall RECALL·LOT 추적). PR `cdc/recall-inventory`. 다음 2/3 cdc-outbound 0.23.0·V16(RECALL_HOLD — 재할당 안 함), 3/3 cdc-quality 0.3.0(리콜 발령·RecallIssued).
+- 2026-11-26: 리콜 3/3 — cdc-quality 0.3.0(Flyway V3) `/cdc-recalls` 발령(본사 승인 번호)·RecallIssued·모든 CDC 보류. PR `cdc/recall-quality`. 배포 순서 inventory 0.18.0 → outbound 0.23.0 → quality 0.3.0(pc1-todo: 라우트·Debezium).
