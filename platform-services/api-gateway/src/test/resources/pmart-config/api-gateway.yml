@@ -197,6 +197,16 @@ spring:
               predicates:
                 - Path=/api/v1/carriers,/api/v1/vehicles,/api/v1/vehicles/**,/api/v1/drivers,/api/v1/drivers/** # TMS 운송사·차량·기사(fleet 0.2.0 #527, 2026-11-26)
               order: -84
+            - id: transport-planning-service
+              uri: ${pmart.gateway.upstream.transport-planning-service}
+              predicates:
+                - Path=/api/v1/cdcs/*/routes,/api/v1/cdcs/*/routes/**,/api/v1/cdcs/*/transport-requests,/api/v1/cdcs/*/transport-requests/**,/api/v1/cdcs/*/transport-orders,/api/v1/cdcs/*/transport-orders/** # TMS 노선·이관요청서·운송지시서(transport-planning 0.2.0 #529, 2026-11-26)
+              order: -83
+            - id: transport-execution-service
+              uri: ${pmart.gateway.upstream.transport-execution-service}
+              predicates:
+                - Path=/api/v1/cdcs/*/trips,/api/v1/mfcs/*/inbound-trips,/api/v1/trips/** # TMS 운행(transport-execution 0.2.0 #530, 2026-11-26)
+              order: -82
             - id: mfc-fulfillment-service
               uri: ${pmart.gateway.upstream.mfc-fulfillment-service}
               predicates:
@@ -314,6 +324,8 @@ pmart:
       cdc-quality-service: http://cdc-quality-service:8604
       cdc-inbound-service: http://cdc-inbound-service:8605
       fleet-service: http://fleet-service:8703
+      transport-planning-service: http://transport-planning-service:8701
+      transport-execution-service: http://transport-execution-service:8702
       mfc-capacity-service: http://mfc-capacity-service:8303
       mfc-location-service: http://mfc-location-service:8304
       mfc-quality-service: http://mfc-quality-service:8305
