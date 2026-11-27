@@ -123,6 +123,7 @@ GET /api/v1/cdcs/{cdcId}/trips OPERATOR
 GET /api/v1/cdcs/{cdcId}/waves OPERATOR
 GET /api/v1/cdcs/{cdcId}/worker-throughput OPERATOR
 GET /api/v1/cdcs/{cdcId}/workers OPERATOR
+GET /api/v1/cdcs/{cdcId}/workers/{workerId}/available-tasks OPERATOR
 GET /api/v1/centers OPERATOR
 GET /api/v1/centers/{centerId} OPERATOR
 GET /api/v1/centers/{centerId}/calendar OPERATOR
@@ -536,6 +537,7 @@ POST /api/v1/cdcs/{cdcId}/transport-orders/{orderId}/skips OPERATOR
 POST /api/v1/cdcs/{cdcId}/transport-requests/{trfId}/carryovers OPERATOR
 POST /api/v1/cdcs/{cdcId}/workers/{workerId}/location-scans OPERATOR
 POST /api/v1/cdcs/{cdcId}/workers/{workerId}/next-tasks OPERATOR
+POST /api/v1/cdcs/{cdcId}/workers/{workerId}/task-claims OPERATOR
 POST /api/v1/change-requests OPERATOR
 POST /api/v1/change-requests/{changeRequestId}/submissions OPERATOR
 POST /api/v1/change-requests/{changeRequestId}/withdrawals OPERATOR

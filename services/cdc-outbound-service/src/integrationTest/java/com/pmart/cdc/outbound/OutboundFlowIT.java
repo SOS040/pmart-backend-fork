@@ -337,17 +337,59 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
                 .path("code")
                 .asString())
         .isEqualTo("NO_TASK_AVAILABLE");
+    // (0.36.0) 대기 목록 — next-tasks 후보와 같은 순서(첫 줄 = 권장), 남의 이름 403, 거르기 같은 뜻
+    Res avail = get(W1, "/cdcs/CDC01/workers/w1/available-tasks");
+    assertThat(avail.status()).as(avail.body().toString()).isEqualTo(200);
+    assertThat(avail.body().path("items").size()).isEqualTo(2);
+    String recommended = avail.body().path("items").get(0).path("taskId").asString();
+    assertThat(avail.body().path("items").get(0).path("lines").size()).isPositive();
+    assertThat(get(W1, "/cdcs/CDC01/workers/w1/available-tasks?size=1").body().path("items").size())
+        .isEqualTo(1);
+    assertThat(
+            get(W1, "/cdcs/CDC01/workers/w1/available-tasks?waveId=WAVE-none")
+                .body()
+                .path("items")
+                .size())
+        .isZero();
+    assertThat(get(W3, "/cdcs/CDC01/workers/w1/available-tasks").status()).isEqualTo(403);
     Res n1 = post(W1, "/cdcs/CDC01/workers/w1/next-tasks", Map.of("waveId", waveId, "trfId", trf1));
     assertThat(n1.status()).as(n1.body().toString()).isEqualTo(201);
     assertThat(n1.body().path("state").asString()).isEqualTo("ACCEPTED");
     String t1 = n1.body().path("taskId").asString();
+    assertThat(t1).isEqualTo(recommended);
     Res again = post(W1, "/cdcs/CDC01/workers/w1/next-tasks", Map.of());
     assertThat(again.status()).isEqualTo(200);
     assertThat(again.body().path("taskId").asString()).isEqualTo(t1);
-    Res n2 = post(W2, "/cdcs/CDC01/workers/w2/next-tasks", Map.of());
-    assertThat(n2.status()).isEqualTo(201);
-    String t2 = n2.body().path("taskId").asString();
+    // (0.36.0) 고른 작업 맡기 — 남이 든 작업 TASK_TAKEN, 들고 있으면 ALREADY_HOLDING, 같은 작업이면 200
+    JsonNode left = get(W2, "/cdcs/CDC01/workers/w2/available-tasks").body().path("items");
+    assertThat(left.size()).isEqualTo(1);
+    String t2 = left.get(0).path("taskId").asString();
     assertThat(t2).isNotEqualTo(t1);
+    assertThat(
+            post(W2, "/cdcs/CDC01/workers/w2/task-claims", Map.of("taskId", t1))
+                .body()
+                .path("code")
+                .asString())
+        .isEqualTo("TASK_TAKEN");
+    assertThat(
+            post(W1, "/cdcs/CDC01/workers/w1/task-claims", Map.of("taskId", t2))
+                .body()
+                .path("code")
+                .asString())
+        .isEqualTo("ALREADY_HOLDING");
+    assertThat(
+            post(W2, "/cdcs/CDC01/workers/w2/task-claims", Map.of("taskId", "TSK-none")).status())
+        .isEqualTo(404);
+    assertThat(post(W3, "/cdcs/CDC01/workers/w2/task-claims", Map.of("taskId", t2)).status())
+        .isEqualTo(403);
+    Res n2 = post(W2, "/cdcs/CDC01/workers/w2/task-claims", Map.of("taskId", t2));
+    assertThat(n2.status()).as(n2.body().toString()).isEqualTo(201);
+    assertThat(n2.body().path("state").asString()).isEqualTo("ACCEPTED");
+    assertThat(n2.body().path("assigneeId").asString()).isEqualTo("w2");
+    assertThat(post(W2, "/cdcs/CDC01/workers/w2/task-claims", Map.of("taskId", t2)).status())
+        .isEqualTo(200);
+    assertThat(get(W3, "/cdcs/CDC01/workers/w3/available-tasks").body().path("items").size())
+        .isZero();
     assertThat(
             post(W3, "/cdcs/CDC01/workers/w3/next-tasks", Map.of()).body().path("code").asString())
         .isEqualTo("NO_TASK_AVAILABLE");

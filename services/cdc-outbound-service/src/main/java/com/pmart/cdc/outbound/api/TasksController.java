@@ -1,21 +1,29 @@
 package com.pmart.cdc.outbound.api;
 
 import com.pmart.cdc.outbound.api.generated.TasksApi;
+import com.pmart.cdc.outbound.api.generated.model.ClaimTaskRequest;
 import com.pmart.cdc.outbound.api.generated.model.IntakeTransfer202Response;
+import com.pmart.cdc.outbound.api.generated.model.ListAvailableTasks200Response;
 import com.pmart.cdc.outbound.api.generated.model.ListTasks200Response;
 import com.pmart.cdc.outbound.api.generated.model.ListTasks200ResponsePage;
+import com.pmart.cdc.outbound.api.generated.model.PickMode;
 import com.pmart.cdc.outbound.api.generated.model.PullNextTaskRequest;
 import com.pmart.cdc.outbound.api.generated.model.ReportPickResultRequest;
 import com.pmart.cdc.outbound.api.generated.model.Task;
 import com.pmart.cdc.outbound.api.generated.model.TaskState;
 import com.pmart.cdc.outbound.application.TaskService;
 import com.pmart.cdc.outbound.application.TaskService.PickLine;
+import com.pmart.cdc.outbound.infrastructure.OutboundStore.CandidateFilter;
+import java.util.List;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
-/** 계약 TasksApi — 작업 목록·조회, PDA 다음 작업 받기·착수·피킹 실적(0.3.0, 경로 `/cdcs/{cdcId}/…`). */
+/**
+ * 계약 TasksApi — 작업 목록·조회, PDA 다음 작업 받기·대기 목록·고른 작업 맡기(0.36.0)·착수·피킹 실적(0.3.0, 경로
+ * `/cdcs/{cdcId}/…`).
+ */
 @RestController
 public class TasksController implements TasksApi {
 
@@ -82,6 +90,47 @@ public class TasksController implements TasksApi {
                 body == null ? null : body.getWaveId(),
                 body == null ? null : body.getTrfId())
             .value();
+    return ResponseEntity.status(r.created() ? HttpStatus.CREATED : HttpStatus.OK)
+        .body(Dto.task(r.task()));
+  }
+
+  @Override
+  public ResponseEntity<ListAvailableTasks200Response> listAvailableTasks(
+      String cdcId,
+      String workerId,
+      @Nullable String kind,
+      @Nullable String zone,
+      @Nullable String floor,
+      @Nullable PickMode pickMode,
+      @Nullable List<String> aisles,
+      @Nullable String waveId,
+      @Nullable String trfId,
+      Integer size) {
+    var f =
+        new CandidateFilter(
+            kind,
+            zone,
+            floor,
+            pickMode == null ? null : pickMode.getValue(),
+            aisles,
+            waveId,
+            trfId);
+    var out = new ListAvailableTasks200Response();
+    out.setItems(
+        tasks.available(cdcId, workerId, f, size == null ? 20 : size).stream()
+            .map(Dto::task)
+            .toList());
+    return ResponseEntity.ok(out);
+  }
+
+  @Override
+  public ResponseEntity<Task> claimTask(
+      String cdcId,
+      String workerId,
+      String idempotencyKey,
+      String xSourceSystem,
+      ClaimTaskRequest body) {
+    var r = tasks.claim(idempotencyKey, xSourceSystem, cdcId, workerId, body.getTaskId()).value();
     return ResponseEntity.status(r.created() ? HttpStatus.CREATED : HttpStatus.OK)
         .body(Dto.task(r.task()));
   }

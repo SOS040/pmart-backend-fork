@@ -5,6 +5,7 @@ import com.pmart.cdc.outbound.domain.BatchPlan;
 import com.pmart.cdc.outbound.domain.BatchPlan.ShareState;
 import com.pmart.cdc.outbound.domain.PickPlan;
 import com.pmart.cdc.outbound.infrastructure.OutboundStore;
+import com.pmart.cdc.outbound.infrastructure.OutboundStore.CandidateFilter;
 import com.pmart.cdc.outbound.infrastructure.OutboundStore.ShareRow;
 import com.pmart.cdc.outbound.infrastructure.OutboundStore.TaskLineRow;
 import com.pmart.cdc.outbound.infrastructure.OutboundStore.TaskRow;
@@ -35,6 +36,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class TaskService {
 
   static final String OP_NEXT = "cdcOutbound:nextTask";
+  static final String OP_CLAIM = "cdcOutbound:claimTask";
   static final String OP_START = "cdcOutbound:startTask";
   static final String OP_PICK = "cdcOutbound:pickResult";
 
@@ -166,7 +168,9 @@ public class TaskService {
           }
           TaskRow cand =
               store
-                  .lockNextCandidate(cdcId, kind, zone, floor, pickMode, aisles, waveId, trfId)
+                  .lockNextCandidate(
+                      cdcId,
+                      new CandidateFilter(kind, zone, floor, pickMode, aisles, waveId, trfId))
                   .orElseThrow(
                       () ->
                           new PmartException(
@@ -177,6 +181,71 @@ public class TaskService {
                               List.of()));
           store.assign(cand.taskId(), workerId, support.now());
           return new NextResult(true, view(cand.taskId()));
+        });
+  }
+
+  /**
+   * (0.36.0) 작업자 본인이 받을 수 있는 대기 작업 — next-tasks 후보와 같은 기준·같은 순서(첫 줄 = 다음 작업 받기가 줄 작업). 사용자
+   * 2026-11-27 "대기 목록에서 선택할 수 있게".
+   */
+  @Transactional(readOnly = true)
+  public List<TaskView> available(String cdcId, String workerId, CandidateFilter f, int size) {
+    Support.requireSelf(cdcId, workerId);
+    List<TaskView> out = new ArrayList<>();
+    for (TaskRow t : store.candidates(cdcId, f, size)) {
+      out.add(new TaskView(t, store.taskLines(t.taskId()), store.shares(t.taskId())));
+    }
+    return out;
+  }
+
+  /**
+   * (0.36.0) 고른 작업 맡기 — 한 번에 하나(들고 있으면 ALREADY_HOLDING, 같은 작업이면 그대로), 그새 다른 사람이 맡았으면 TASK_TAKEN,
+   * 후보가 아니면(Wave 보류·끝남 등) NOT_AVAILABLE.
+   */
+  public Outcome<NextResult> claim(
+      String requestId, String sourceSystem, String cdcId, String workerId, String taskId) {
+    Support.requireSelf(cdcId, workerId);
+    Map<String, String> req = new LinkedHashMap<>();
+    req.put("cdcId", cdcId);
+    req.put("workerId", workerId);
+    req.put("taskId", taskId);
+    return idempotency.execute(
+        Support.key(sourceSystem, requestId, OP_CLAIM, workerId),
+        req,
+        NextResult.class,
+        () -> {
+          store.lockWorker(cdcId, workerId);
+          Optional<TaskRow> held = store.heldBy(cdcId, workerId);
+          if (held.isPresent()) {
+            if (held.get().taskId().equals(taskId)) {
+              return new NextResult(false, view(taskId));
+            }
+            throw new PmartException(
+                "ALREADY_HOLDING",
+                HttpStatus.CONFLICT,
+                "들고 있는 작업 " + held.get().taskId() + " 을 먼저 끝내야 합니다.",
+                false,
+                List.of());
+          }
+          TaskRow t = find(cdcId, taskId, true);
+          if (t.assigneeId() != null) {
+            throw new PmartException(
+                "TASK_TAKEN",
+                HttpStatus.CONFLICT,
+                "작업 " + taskId + " 은 이미 다른 작업자가 맡았습니다.",
+                false,
+                List.of());
+          }
+          if (!store.isCandidate(cdcId, taskId)) {
+            throw new PmartException(
+                "NOT_AVAILABLE",
+                HttpStatus.CONFLICT,
+                "작업 " + taskId + " 은 지금 받을 수 없습니다(상태 " + t.state() + ").",
+                false,
+                List.of());
+          }
+          store.assign(taskId, workerId, support.now());
+          return new NextResult(true, view(taskId));
         });
   }
 

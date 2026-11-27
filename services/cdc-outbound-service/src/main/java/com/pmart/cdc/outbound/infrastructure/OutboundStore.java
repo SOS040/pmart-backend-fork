@@ -677,60 +677,87 @@ public class OutboundStore {
   }
 
   /** 담당 없는 CREATED 작업 하나를 잠근다(다른 요청이 잠근 줄은 건너뜀 — 동시에 받아도 한 작업은 한 사람). 순서 TRF 기한 → 만든 순. */
-  public Optional<TaskRow> lockNextCandidate(
-      String cdcId,
+  /** 다음 작업 받기·대기 목록(0.36.0)이 같이 쓰는 후보 거르기. */
+  public record CandidateFilter(
       @Nullable String kind,
       @Nullable String zone,
       @Nullable String floor,
       @Nullable String pickMode,
       @Nullable List<String> aisles,
       @Nullable String waveId,
-      @Nullable String trfId) {
-    StringBuilder sql =
-        new StringBuilder(
-            "SELECT "
-                + TASK_COLS
-                + " FROM task t JOIN wave w ON w.wave_id = t.wave_id WHERE t.cdc_id = ?"
-                + " AND t.state = 'CREATED' AND t.assignee_id IS NULL"
-                + " AND w.state IN ('RELEASED', 'IN_PROGRESS') AND w.held_at IS NULL"); // 0.22.0 보류
-    // Wave 제외
-    List<Object> args = new ArrayList<>(List.of(cdcId));
-    if (kind != null) {
+      @Nullable String trfId) {}
+
+  private static final String CANDIDATE_FROM =
+      " FROM task t JOIN wave w ON w.wave_id = t.wave_id WHERE t.cdc_id = ?"
+          + " AND t.state = 'CREATED' AND t.assignee_id IS NULL"
+          + " AND w.state IN ('RELEASED', 'IN_PROGRESS') AND w.held_at IS NULL"; // 0.22.0 보류
+
+  // 우선순위(0.20.0) 높은 것 먼저 — 같으면 기한·만든 순(보류 HELD 는 state = 'CREATED' 조건에서 빠진다)
+  private static final String CANDIDATE_ORDER = " ORDER BY t.priority DESC, t.due_at, t.seq";
+
+  private static void appendFilter(StringBuilder sql, List<Object> args, CandidateFilter f) {
+    if (f.kind() != null) {
       sql.append(" AND t.kind = ?");
-      args.add(kind);
+      args.add(f.kind());
     }
-    if (zone != null) {
+    if (f.zone() != null) {
       sql.append(" AND t.zone = ?");
-      args.add(zone);
+      args.add(f.zone());
     }
-    if (floor != null) {
+    if (f.floor() != null) {
       sql.append(" AND t.floor = ?");
-      args.add(floor);
+      args.add(f.floor());
     }
-    if (pickMode != null) {
+    if (f.pickMode() != null) {
       sql.append(" AND t.pick_mode = ?");
-      args.add(pickMode);
+      args.add(f.pickMode());
     }
-    if (aisles != null && !aisles.isEmpty()) {
+    if (f.aisles() != null && !f.aisles().isEmpty()) {
       sql.append(" AND t.aisle IN (")
-          .append(String.join(",", java.util.Collections.nCopies(aisles.size(), "?")))
+          .append(String.join(",", java.util.Collections.nCopies(f.aisles().size(), "?")))
           .append(")");
-      args.addAll(aisles);
+      args.addAll(f.aisles());
     }
-    if (waveId != null) { // 0.34.0
+    if (f.waveId() != null) { // 0.34.0
       sql.append(" AND t.wave_id = ?");
-      args.add(waveId);
+      args.add(f.waveId());
     }
-    if (trfId != null) { // 0.34.0 — 단건 trf_id 또는 묶음 몫
+    if (f.trfId() != null) { // 0.34.0 — 단건 trf_id 또는 묶음 몫
       sql.append(
           " AND (t.trf_id = ? OR EXISTS (SELECT 1 FROM task_line_share s"
               + " WHERE s.task_id = t.task_id AND s.trf_id = ?))");
-      args.add(trfId);
-      args.add(trfId);
+      args.add(f.trfId());
+      args.add(f.trfId());
     }
-    // 우선순위(0.20.0) 높은 것 먼저 — 같으면 기한·만든 순(보류 HELD 는 state = 'CREATED' 조건에서 빠진다)
-    sql.append(" ORDER BY t.priority DESC, t.due_at, t.seq LIMIT 1 FOR UPDATE OF t SKIP LOCKED");
+  }
+
+  public Optional<TaskRow> lockNextCandidate(String cdcId, CandidateFilter f) {
+    StringBuilder sql = new StringBuilder("SELECT " + TASK_COLS + CANDIDATE_FROM);
+    List<Object> args = new ArrayList<>(List.of(cdcId));
+    appendFilter(sql, args, f);
+    sql.append(CANDIDATE_ORDER).append(" LIMIT 1 FOR UPDATE OF t SKIP LOCKED");
     return jdbc.query(sql.toString(), (rs, i) -> task(rs), args.toArray()).stream().findFirst();
+  }
+
+  /** (0.36.0) 대기 목록 — next-tasks 와 같은 후보·같은 순서, 잠그지 않음(보기만). */
+  public List<TaskRow> candidates(String cdcId, CandidateFilter f, int limit) {
+    StringBuilder sql = new StringBuilder("SELECT " + TASK_COLS + CANDIDATE_FROM);
+    List<Object> args = new ArrayList<>(List.of(cdcId));
+    appendFilter(sql, args, f);
+    sql.append(CANDIDATE_ORDER).append(" LIMIT ?");
+    args.add(limit);
+    return jdbc.query(sql.toString(), (rs, i) -> task(rs), args.toArray());
+  }
+
+  /** (0.36.0) 고른 작업 맡기 — 잠근 뒤 지금도 후보 조건(담당 없는 CREATED·Wave 진행·보류 아님)인지. */
+  public boolean isCandidate(String cdcId, String taskId) {
+    Integer n =
+        jdbc.queryForObject(
+            "SELECT count(*)" + CANDIDATE_FROM + " AND t.task_id = ?",
+            Integer.class,
+            cdcId,
+            taskId);
+    return n != null && n > 0;
   }
 
   public void assign(String taskId, String workerId, Instant at) {
