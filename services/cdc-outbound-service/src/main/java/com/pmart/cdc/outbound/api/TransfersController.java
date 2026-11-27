@@ -2,11 +2,12 @@ package com.pmart.cdc.outbound.api;
 
 import com.pmart.cdc.outbound.api.generated.TransfersApi;
 import com.pmart.cdc.outbound.api.generated.model.CancelBeforeDepartureRequest;
-import com.pmart.cdc.outbound.api.generated.model.GetPreDepartureCancellation200Response;
 import com.pmart.cdc.outbound.api.generated.model.IntakeTransfer202Response;
+import com.pmart.cdc.outbound.api.generated.model.PreDepartureCancellation;
 import com.pmart.cdc.outbound.application.CancellationService;
 import com.pmart.cdc.outbound.application.CancellationService.Cancel;
 import com.pmart.cdc.outbound.application.CancellationService.Reduce;
+import com.pmart.cdc.outbound.infrastructure.CancellationStore.CancelRow;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpStatus;
@@ -51,19 +52,23 @@ public class TransfersController implements TransfersApi {
   }
 
   @Override
-  public ResponseEntity<GetPreDepartureCancellation200Response> getPreDepartureCancellation(
+  public ResponseEntity<PreDepartureCancellation> getPreDepartureCancellation(
       String cdcId, String trfId, String requestId) {
-    var r = cancellations.get(cdcId, trfId, requestId);
-    var out = new GetPreDepartureCancellation200Response();
+    return ResponseEntity.ok(view(cancellations.get(cdcId, trfId, requestId)));
+  }
+
+  /** 미출발 취소 결과 — 운영자 조회·서비스 간 조회(0.35.0)가 함께 쓴다. */
+  static PreDepartureCancellation view(CancelRow r) {
+    var out = new PreDepartureCancellation();
     out.setRequestId(r.requestKey());
     out.setCancellationId(r.cancellationId());
-    out.setScope(GetPreDepartureCancellation200Response.ScopeEnum.fromValue(r.scope()));
-    out.setState(GetPreDepartureCancellation200Response.StateEnum.fromValue(r.state()));
+    out.setScope(PreDepartureCancellation.ScopeEnum.fromValue(r.scope()));
+    out.setState(PreDepartureCancellation.StateEnum.fromValue(r.state()));
     out.setReleasedQty(r.releasedQty());
     out.setUnloadedLpns(List.of());
     out.setReleaseCommitId(r.releaseCommitId());
     out.setReason(r.reason());
     out.setRejectReason(r.rejectReason());
-    return ResponseEntity.ok(out);
+    return out;
   }
 }

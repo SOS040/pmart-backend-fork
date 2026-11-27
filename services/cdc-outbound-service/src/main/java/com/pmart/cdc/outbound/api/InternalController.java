@@ -1,6 +1,7 @@
 package com.pmart.cdc.outbound.api;
 
 import com.pmart.cdc.outbound.api.generated.InternalApi;
+import com.pmart.cdc.outbound.api.generated.model.CancelTransferIntakeRequest;
 import com.pmart.cdc.outbound.api.generated.model.DepartureValidation;
 import com.pmart.cdc.outbound.api.generated.model.DepartureValidationMismatchesInner;
 import com.pmart.cdc.outbound.api.generated.model.DepartureValidationTransfersInner;
@@ -8,6 +9,7 @@ import com.pmart.cdc.outbound.api.generated.model.IntakeTransfer202Response;
 import com.pmart.cdc.outbound.api.generated.model.LpnComposition;
 import com.pmart.cdc.outbound.api.generated.model.LpnCompositionContentsInner;
 import com.pmart.cdc.outbound.api.generated.model.OutboundReadiness;
+import com.pmart.cdc.outbound.api.generated.model.PreDepartureCancellation;
 import com.pmart.cdc.outbound.api.generated.model.ShipmentManifest;
 import com.pmart.cdc.outbound.api.generated.model.ShipmentManifestLinesInner;
 import com.pmart.cdc.outbound.api.generated.model.TransferIntake;
@@ -15,6 +17,7 @@ import com.pmart.cdc.outbound.api.generated.model.TransferIntakeAllOfProgress;
 import com.pmart.cdc.outbound.api.generated.model.TransferIntakeInput;
 import com.pmart.cdc.outbound.api.generated.model.TransferIntakeInputLinesInner;
 import com.pmart.cdc.outbound.api.generated.model.ValidateDepartureRequest;
+import com.pmart.cdc.outbound.application.CancellationService;
 import com.pmart.cdc.outbound.application.DepartureService;
 import com.pmart.cdc.outbound.application.DepartureService.Composition;
 import com.pmart.cdc.outbound.application.DepartureService.Validate;
@@ -37,12 +40,40 @@ public class InternalController implements InternalApi {
   private final TransferService transfers;
   private final DepartureService departures;
   private final ReadinessService readiness;
+  private final CancellationService cancellations;
 
   public InternalController(
-      TransferService transfers, DepartureService departures, ReadinessService readiness) {
+      TransferService transfers,
+      DepartureService departures,
+      ReadinessService readiness,
+      CancellationService cancellations) {
     this.transfers = transfers;
     this.departures = departures;
     this.readiness = readiness;
+    this.cancellations = cancellations;
+  }
+
+  /** (0.35.0, CO-3 ①) 받을 MFC 의 미출발 취소 — FULL, 규칙은 운영자 취소와 같다. */
+  @Override
+  public ResponseEntity<IntakeTransfer202Response> cancelTransferIntake(
+      String trfId, String idempotencyKey, String xSourceSystem, CancelTransferIntakeRequest body) {
+    var r =
+        cancellations.cancelForMfc(
+            trfId,
+            body.getMfcId(),
+            idempotencyKey,
+            xSourceSystem,
+            body.getReason().getValue(),
+            body.getSourceRef(),
+            body.getRequestedBy());
+    return ResponseEntity.status(HttpStatus.ACCEPTED).body(Dto.command(r));
+  }
+
+  @Override
+  public ResponseEntity<PreDepartureCancellation> getTransferIntakeCancellation(
+      String trfId, String requestId) {
+    return ResponseEntity.ok(
+        TransfersController.view(cancellations.getForService(trfId, requestId)));
   }
 
   @Override

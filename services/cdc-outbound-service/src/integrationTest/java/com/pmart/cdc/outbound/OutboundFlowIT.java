@@ -966,6 +966,89 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
   }
 
   /**
+   * (0.35.0, CO-3 ①) 받을 MFC 의 서비스 간 미출발 취소 — 서비스 토큰만, 받을 센터만, 미할당은 바로·할당은 해제 뒤 CANCELLED, 같은 키 재생,
+   * 끝난 TRF 다시 취소 409. 다른 시험과 섞이지 않게 CDC20.
+   */
+  @Test
+  void receivingMfcCancelsTransferBeforePicking() {
+    String c = "CDC20";
+    String mfcSvc = TestJwt.service("mfc-inbound-service");
+    String trfX = "TRF-" + UUID.randomUUID();
+    String trfY = "TRF-" + UUID.randomUUID();
+    String alc = "ALC-" + UUID.randomUUID().toString().substring(0, 8);
+    stubAllocate(
+        trfX,
+        200,
+        "{\"allocationId\":\""
+            + alc
+            + "\",\"state\":\"ALLOCATED\",\"lines\":[{\"sku\":\"E-00000001\",\"allocatedQty\":3},{\"sku\":\"E-00000002\",\"allocatedQty\":2}]}");
+    stubAllocate(trfY, 422, "{\"code\":\"SKU_NOT_HANDLED\",\"detail\":\"취급 OFF\"}");
+    Map<String, Object> x = new LinkedHashMap<>(trf(trfX, 3, 2));
+    x.put("cdcId", c);
+    Map<String, Object> y = new LinkedHashMap<>(trf(trfY, 1, 1));
+    y.put("cdcId", c);
+    assertThat(post(SERVICE, "/internal/transfer-intakes", x).status()).isEqualTo(202);
+    assertThat(post(SERVICE, "/internal/transfer-intakes", y).status()).isEqualTo(202);
+    Map<String, Object> body =
+        Map.of(
+            "mfcId",
+            "MFC-BJG-01",
+            "reason",
+            "TRANSFER_CANCELLED",
+            "sourceRef",
+            "SR-1",
+            "requestedBy",
+            "OP-mfc-sup");
+    String cx = "/internal/transfer-intakes/" + trfX + "/cancellations";
+    String cy = "/internal/transfer-intakes/" + trfY + "/cancellations";
+
+    // 운영자 토큰 403, 받을 센터가 아니면 404
+    String ops = TestJwt.operator("ops-20", List.of("CDC_SUPERVISOR"), List.of(c));
+    assertThat(postKey(ops, cx, UUID.randomUUID().toString(), body).status()).isEqualTo(403);
+    Map<String, Object> other = new LinkedHashMap<>(body);
+    other.put("mfcId", "MFC-OTHER-01");
+    assertThat(postKey(mfcSvc, cx, UUID.randomUUID().toString(), other).status()).isEqualTo(404);
+
+    // 미할당(ALLOCATION_FAILED) — 재고 호출 없이 바로 CANCELLED
+    String ky = UUID.randomUUID().toString();
+    Res ry = postKey(mfcSvc, cy, ky, body);
+    assertThat(ry.status()).as(ry.body().toString()).isEqualTo(202);
+    assertThat(ry.body().path("status").asString()).isEqualTo("APPLIED");
+    assertThat(get(mfcSvc, cy + "/" + ky).body().path("state").asString()).isEqualTo("APPLIED");
+    assertThat(get(SERVICE, "/internal/transfer-intakes/" + trfY).body().path("state").asString())
+        .isEqualTo("CANCELLED");
+
+    // 할당 — 전량 해제(사유 TRANSFER_CANCELLED, sourceRef 공급 요청) → CANCELLED
+    stubRelease(
+        alc,
+        200,
+        "{\"status\":\"APPLIED\",\"requestId\":\"k\",\"resultId\":\"CMT-M1\",\"appliedQty\":5}");
+    String kx = UUID.randomUUID().toString();
+    Res rx = postKey(mfcSvc, cx, kx, body);
+    assertThat(rx.status()).as(rx.body().toString()).isEqualTo(202);
+    assertThat(rx.body().path("status").asString()).isEqualTo("APPLIED");
+    inventory.verify(
+        1,
+        postRequestedFor(urlPathEqualTo(ALLOC + "/" + alc + "/releases"))
+            .withRequestBody(matchingJsonPath("$.reason", equalTo("TRANSFER_CANCELLED")))
+            .withRequestBody(matchingJsonPath("$.sourceRef", equalTo("SR-1"))));
+    JsonNode gx = get(mfcSvc, cx + "/" + kx).body();
+    assertThat(gx.path("state").asString()).isEqualTo("APPLIED");
+    assertThat(gx.path("scope").asString()).isEqualTo("FULL");
+    assertThat(gx.path("releasedQty").asInt()).isEqualTo(5);
+    assertThat(get(SERVICE, "/internal/transfer-intakes/" + trfX).body().path("state").asString())
+        .isEqualTo("CANCELLED");
+    // 같은 키·같은 본문은 그대로(재고 다시 안 부름), 새 키는 이미 취소 409
+    assertThat(postKey(mfcSvc, cx, kx, body).body().path("status").asString()).isEqualTo("APPLIED");
+    inventory.verify(1, postRequestedFor(urlPathEqualTo(ALLOC + "/" + alc + "/releases")));
+    assertThat(
+            postKey(mfcSvc, cx, UUID.randomUUID().toString(), body).body().path("code").asString())
+        .isEqualTo("INVALID_STATE");
+    // 조회도 서비스만
+    assertThat(get(ops, cx + "/" + kx).status()).isEqualTo(403);
+  }
+
+  /**
    * 미출발 취소(0.7.0, 피킹 전): 미할당 FULL 바로 반영 → 릴리스 전 PARTIAL(할당 일부 해제) → 검증 거절 → Wave 릴리스 뒤 PARTIAL 거절 →
    * FULL(작업 막기 → 해제 불명 → CANCELLING, 출발 검증 거절 → 같은 본문 재전송으로 반영 → TRF·Wave CANCELLED). 다른 시험의 작업
    * 대기열과 섞이지 않게 CDC02.

@@ -1,8 +1,10 @@
 openapi: 3.1.0
 info:
   title: cdc-outbound-service
-  version: 0.34.0
+  version: 0.35.0
   description: |
+    0.35.0(2026-11-27, 요청 CO-3 ① — mfc-inbound, 사용자 "1만"): 서비스 간 미출발 취소 `POST /internal/transfer-intakes/{trfId}/cancellations`(받을 MFC 가 부름 — FULL 만, 규칙은 운영자 미출발 취소와 같음)·
+      결과 조회 `GET …/cancellations/{requestId}`. 운영자 조회 응답을 `PreDepartureCancellation` 스키마로 뺌(모양 그대로). 취소 사실 사건(CO-3 ②)은 만들지 않음 — 2026-11-25 "공급쪽은 안 해" 그대로.
     0.34.0(2026-11-27, DC 시뮬레이터 — 가상 작업자가 다른 Wave 작업을 받아 멈춘 일 K20543): 다음 작업 받기 본문에 `waveId`·`trfId` 거르기(선택).
       trfId 는 단건 작업의 trfId 또는 묶음 작업 몫(shares)에 그 TRF 가 든 작업. 이미 들고 있는 작업은 거르기와 상관없이 그대로 돌려준다.
     0.33.0(2026-11-27, MFC 시뮬레이터 R-52 — mfc-inbound #548 이 읽음): `GET /internal/transfer-intakes/{trfId}` 에 `trfNumber`·`waveNumber`(waveId 는 원래 있음),
@@ -147,6 +149,62 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/TransferIntake' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /internal/transfer-intakes/{trfId}/cancellations:
+    post:
+      tags: [internal]
+      summary: '[mfc-inbound→cdc-outbound] 받을 MFC 의 미출발 취소 — FULL, 피킹 시작 전만 (0.35.0, CO-3 ①)'
+      description: |
+        2026-11-27 사용자 "1만"(요청 CO-3 ①): 공급 요청 TRF(ADR-0091)를 받을 센터가 접수를 거두면 mfc-inbound 가 부른다. 서비스 토큰만(운영자 403).
+        규칙·상태·재고 해제는 운영자 `POST /cdcs/{cdcId}/transfers/{trfId}/pre-departure-cancellations` FULL 과 같다:
+        미할당이면 바로 CANCELLED, 할당·미피킹이면 남은 PICK 작업을 막고 할당 전량 해제(재고 사유 = reason, TRANSFER_CANCELLED·TRANSFER_CHANGED·PICK_SHORTAGE·QUALITY_BLOCKED 밖은 PRE_DEPARTURE_CANCEL).
+        409 PICKING_STARTED(피킹·분류 시작 — 그대로 받아야 함) / INVALID_STATE(출발·이미 취소) / ALLOCATION_IN_PROGRESS / CANCELLATION_IN_PROGRESS / VERSION_CHANGE_IN_PROGRESS / IDEMPOTENCY_CONFLICT.
+        재고 해제 응답이 불명이면 status ACCEPTED·조회 state UNKNOWN — 같은 Idempotency-Key·같은 본문으로 다시 보내면 같은 키로 다시 해제한다. 재고가 거절하면 REJECTED·TRF CANCEL_HOLD.
+        mfcId 가 그 TRF 의 받을 센터가 아니면 404. 취소 사실 사건은 발행하지 않는다(CO-3 ② 하지 않음 — 2026-11-25 "공급쪽은 안 해").
+      operationId: cancelTransferIntake
+      parameters:
+        - { name: trfId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mfcId, reason]
+              properties:
+                mfcId: { type: string, maxLength: 64, description: 받을 센터 — TRF 의 mfcId 와 같아야 함 }
+                reason: { type: string, enum: [TRANSFER_CANCELLED, TRANSFER_CHANGED, PICK_SHORTAGE, TRANSPORT_UNAVAILABLE, QUALITY_BLOCKED, OTHER] }
+                sourceRef: { type: string, maxLength: 128, description: 공급 요청 ID 등 }
+                requestedBy: { type: string, maxLength: 64, description: MFC 에서 거둔 사람(운영자 ID) — 기록용, 없으면 호출 서비스 }
+      responses:
+        '202': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409':
+          description: PICKING_STARTED / INVALID_STATE / ALLOCATION_IN_PROGRESS / CANCELLATION_IN_PROGRESS / VERSION_CHANGE_IN_PROGRESS / IDEMPOTENCY_CONFLICT
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /internal/transfer-intakes/{trfId}/cancellations/{requestId}:
+    get:
+      tags: [internal]
+      summary: 서비스 간 미출발 취소 결과 조회 (0.35.0) — requestId = 취소 요청의 Idempotency-Key
+      operationId: getTransferIntakeCancellation
+      parameters:
+        - { name: trfId, in: path, required: true, schema: { type: string } }
+        - { name: requestId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PreDepartureCancellation' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
 
   /waves:
@@ -1777,18 +1835,7 @@ paths:
           description: OK
           content:
             application/json:
-              schema:
-                type: object
-                properties:
-                  requestId: { type: string }
-                  cancellationId: { type: string }
-                  scope: { type: string, enum: [FULL, PARTIAL] }
-                  state: { type: string, enum: [PENDING, APPLIED, REJECTED, UNKNOWN] }
-                  releasedQty: { type: integer }
-                  unloadedLpns: { type: array, items: { type: string } }
-                  releaseCommitId: { type: string }
-                  reason: { type: string, description: 요청 사유 }
-                  rejectReason: { type: string, description: REJECTED 일 때 재고 응답(HTTP 상태·코드·설명) }
+              schema: { $ref: '#/components/schemas/PreDepartureCancellation' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
 
   /internal/transport-feed:
@@ -1868,6 +1915,19 @@ paths:
 
 components:
   schemas:
+    PreDepartureCancellation:
+      type: object
+      description: (0.35.0 에 스키마로 뺌 — 모양 그대로) 미출발 취소 요청 결과
+      properties:
+        requestId: { type: string }
+        cancellationId: { type: string }
+        scope: { type: string, enum: [FULL, PARTIAL] }
+        state: { type: string, enum: [PENDING, APPLIED, REJECTED, UNKNOWN] }
+        releasedQty: { type: integer }
+        unloadedLpns: { type: array, items: { type: string } }
+        releaseCommitId: { type: string }
+        reason: { type: string, description: 요청 사유 }
+        rejectReason: { type: string, description: REJECTED 일 때 재고 응답(HTTP 상태·코드·설명) }
     WorkRole:
       type: string
       description: '(0.29.0) FC 피킹 · SORT 분류(DAS 라인·분배) · JOCKEY 자키 · REPLENISH 보충 · DPS DPS 구역 · INSPECTOR 검품 · NIGHT_JOCKEY 야간 자키(R/T 하강) · LOADER 도크 상차'

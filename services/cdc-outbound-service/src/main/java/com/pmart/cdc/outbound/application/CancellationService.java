@@ -9,6 +9,7 @@ import com.pmart.cdc.outbound.infrastructure.OutboundStore;
 import com.pmart.cdc.outbound.infrastructure.OutboundStore.TransferLineRow;
 import com.pmart.cdc.outbound.infrastructure.OutboundStore.TransferRow;
 import com.pmart.cdc.outbound.infrastructure.OutboundStore.WaveRow;
+import com.pmart.common.security.PmartPrincipal;
 import com.pmart.common.web.ErrorCode;
 import com.pmart.common.web.PmartException;
 import java.nio.charset.StandardCharsets;
@@ -87,7 +88,61 @@ public class CancellationService {
   }
 
   public CommandResult cancel(Cancel c) {
-    String by = Support.requireCenter(c.cdcId());
+    return run(c, Support.requireCenter(c.cdcId()));
+  }
+
+  /**
+   * (0.35.0, CO-3 ① — 사용자 2026-11-27 "1만") 받을 MFC 의 서비스 간 미출발 취소. 서비스 토큰만, FULL 만 — 규칙은 운영자 취소와 같다.
+   * mfcId 가 그 TRF 의 받을 센터가 아니면 404(남의 TRF 를 거두지 못함).
+   */
+  public CommandResult cancelForMfc(
+      String trfId,
+      String mfcId,
+      String requestKey,
+      String sourceSystem,
+      String reason,
+      @Nullable String sourceRef,
+      @Nullable String requestedBy) {
+    String caller = requireService();
+    TransferRow t = receivingTransfer(trfId, mfcId);
+    String by = requestedBy == null || requestedBy.isBlank() ? caller : requestedBy;
+    return run(
+        new Cancel(
+            t.cdcId(), trfId, requestKey, sourceSystem, null, reason, "FULL", sourceRef, List.of()),
+        by);
+  }
+
+  /** (0.35.0) 서비스 간 취소 결과 조회 — 서비스 토큰만. */
+  @Transactional(readOnly = true)
+  public CancelRow getForService(String trfId, String requestKey) {
+    requireService();
+    store
+        .transfer(trfId, false)
+        .orElseThrow(() -> PmartException.notFound("NOT_FOUND", "TRF " + trfId + " 가 없습니다."));
+    return cancels
+        .findByKey(trfId, requestKey)
+        .orElseThrow(
+            () -> PmartException.notFound("NOT_FOUND", "취소 요청 " + requestKey + " 이 없습니다."));
+  }
+
+  private TransferRow receivingTransfer(String trfId, String mfcId) {
+    return store
+        .transfer(trfId, false)
+        .filter(x -> x.mfcId().equals(mfcId))
+        .orElseThrow(
+            () ->
+                PmartException.notFound(
+                    "NOT_FOUND", "TRF " + trfId + " 가 없거나 " + mfcId + " 가 받을 TRF 가 아닙니다."));
+  }
+
+  private static String requireService() {
+    return PmartPrincipal.current()
+        .filter(PmartPrincipal::isService)
+        .map(PmartPrincipal::subject)
+        .orElseThrow(() -> new PmartException(ErrorCode.FORBIDDEN, "서비스 호출만 할 수 있습니다."));
+  }
+
+  private CommandResult run(Cancel c, String by) {
     validate(c);
     String hash = hash(c);
     Prep p = tx.execute(s -> prepare(c, hash, by));
