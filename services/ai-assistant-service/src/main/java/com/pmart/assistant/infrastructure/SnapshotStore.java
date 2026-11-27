@@ -152,6 +152,18 @@ public class SnapshotStore {
         snapshotId);
   }
 
+  /**
+   * 앞선 색인이 비정상 종료(프로세스 중단)로 남긴 BUILDING 을 모두 FAILED 로 — 그 뒤로는 {@link #prune} 이 유예 뒤 지운다. INGEST 잠금을
+   * 쥔 채로만 부른다: 잠금이 세션 잠금이라 쥐고 있으면 다른 색인이 돌고 있지 않으므로 남은 BUILDING 은 모두 버려진 것이다.
+   *
+   * @return FAILED 로 바꾼 개수
+   */
+  public int failAbandonedBuilding(String reason) {
+    return jdbc.update(
+        "UPDATE index_snapshot SET state = 'FAILED', failure_reason = ? WHERE state = 'BUILDING'",
+        reason);
+  }
+
   /** 한 TX(스냅숏 전환 잠금 배타)에서 이전 ACTIVE → RETIRED, 이 스냅숏 BUILDING → ACTIVE. 이전 것은 지우지 않는다. */
   public void activate(String snapshotId, int chunkCount, Instant now) {
     tx.executeWithoutResult(
