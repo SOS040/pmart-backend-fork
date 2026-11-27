@@ -14,6 +14,7 @@
 - **받으면 웹은**: 탭 안 기억(`web/backoffice/src/features/assistant/askedQuestions.ts`)을 지우고 서버 `question` 만 쓴다.
 - **상태**: 결정됨(2026-11-19) — **PC 4 구현 차례**(`store-question` 켬, 보존 90일·답변과 같이, 본인 지우기 API). ADR-0036 "결정 필요 3"을 이 결정으로 고치는 것은 PC 4(서비스 주인)가 같은 PR 에서.
   - **2026-11-26 PC 4**: 보존 기간은 **14일**(사용자 2026-11-26 "보존 기간을 14일로" — 위 1번의 90일 대신, ADR-0084 마지막 질문 기준, 질문 원문도 답변과 같이 지워짐). `PolicyQuestionFlowIT` 이 시험 사본 설정에 기대지 않게 고치고 시험 사본에 `retention: 14d`, ADR-0036 결정 필요 3 갱신. **남은 것**: PC 1 이 pmart-config `ai-assistant-service.yml`(정본)에 `pmart.assistant.answers.retention: 14d` 넣고 재시작. 본인 지우기 API(3번)는 아직 — 다음 PR.
+  - **2026-11-27 PC 4 — 완료(3번은 채팅 삭제로 대신)**: 사용자 2026-11-27 "1"(질문 하나 지우기 API 를 새로 만들지 않음). 이유: 3번은 채팅 세션(ADR-0084) 전에 정한 것이고, 지금은 본인 채팅 삭제 `DELETE /assistant/chat-sessions/{sessionId}`(1.3.0 — 질문·답변째, 멱등 204)가 있으며, V2 가 옛 답변도 모두 세션으로 묶어 모든 질문을 이것으로 지울 수 있다. 원문만 비우면 "무엇에 대한 답인지 모르는 답변"이 남는다. 보존 14일(pmart-config 정본 `retention: 14d`). 계약 변경 없음. 백오피스 안내 `docs/handoff/clients/backoffice/2026-11-27-reply-assistant-question-delete.md`.
 
 ## AI-2. 상품 영양·알레르기 질문을 정해진 문장으로 (2026-11-23, 보낸 영역 platform — PC 1)
 
