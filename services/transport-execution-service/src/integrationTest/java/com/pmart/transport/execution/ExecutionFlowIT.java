@@ -434,5 +434,13 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
             postRequestedFor(urlPathEqualTo("/api/v1/internal/departure-validations")));
     assertThat(parse(sent.get(sent.size() - 1).getBodyAsString()).path("source").asString())
         .isEqualTo("SIMULATED");
+
+    // R-29 배포 전 자료: 정차는 다 (수동) 출발했는데 운행은 DEPARTED → 주기 작업이 종료
+    jdbc.update(
+        "UPDATE trip_stop SET state = 'DEPARTED', departed_at = now() WHERE trip_id = ?", id);
+    trips.retry();
+    JsonNode done = read(DC, "/trips/" + id).body();
+    assertThat(done.path("state").asString()).as(done.toString()).isEqualTo("COMPLETED");
+    assertThat(done.path("stops").findValuesAsString("state")).containsOnly("DEPARTED");
   }
 }

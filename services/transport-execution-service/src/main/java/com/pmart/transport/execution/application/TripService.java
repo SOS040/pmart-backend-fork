@@ -1150,6 +1150,26 @@ public class TripService {
       releaseReservation(id);
       notifyPlanning(id);
     }
+    // R-29 배포 전에 정차를 수동으로 다 출발시켰지만 운행은 DEPARTED 로 남은 것 — 마지막 정차 출발 시각으로 종료
+    for (var r :
+        jdbc.queryForList(
+            "SELECT t.trip_id, max(s.departed_at) AS last_at FROM trip t JOIN trip_stop s ON s.trip_id ="
+                + " t.trip_id WHERE t.state = 'DEPARTED' GROUP BY t.trip_id HAVING bool_and(s.state ="
+                + " 'DEPARTED') LIMIT 50")) {
+      String id = (String) r.get("trip_id");
+      Timestamp last = (Timestamp) r.get("last_at");
+      tx.executeWithoutResult(
+          st -> {
+            lockState(id);
+            completeIfDone(
+                id,
+                last == null ? clock.instant() : last.toInstant(),
+                "SYSTEM",
+                "transport-execution-service");
+          });
+      releaseReservation(id);
+      notifyPlanning(id);
+    }
   }
 
   // ======================= 공통 =======================
