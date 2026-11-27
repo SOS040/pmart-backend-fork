@@ -683,7 +683,9 @@ public class OutboundStore {
       @Nullable String zone,
       @Nullable String floor,
       @Nullable String pickMode,
-      @Nullable List<String> aisles) {
+      @Nullable List<String> aisles,
+      @Nullable String waveId,
+      @Nullable String trfId) {
     StringBuilder sql =
         new StringBuilder(
             "SELECT "
@@ -714,6 +716,17 @@ public class OutboundStore {
           .append(String.join(",", java.util.Collections.nCopies(aisles.size(), "?")))
           .append(")");
       args.addAll(aisles);
+    }
+    if (waveId != null) { // 0.34.0
+      sql.append(" AND t.wave_id = ?");
+      args.add(waveId);
+    }
+    if (trfId != null) { // 0.34.0 — 단건 trf_id 또는 묶음 몫
+      sql.append(
+          " AND (t.trf_id = ? OR EXISTS (SELECT 1 FROM task_line_share s"
+              + " WHERE s.task_id = t.task_id AND s.trf_id = ?))");
+      args.add(trfId);
+      args.add(trfId);
     }
     // 우선순위(0.20.0) 높은 것 먼저 — 같으면 기한·만든 순(보류 HELD 는 state = 'CREATED' 조건에서 빠진다)
     sql.append(" ORDER BY t.priority DESC, t.due_at, t.seq LIMIT 1 FOR UPDATE OF t SKIP LOCKED");

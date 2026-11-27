@@ -132,7 +132,9 @@ public class TaskService {
       @Nullable String zone,
       @Nullable String floor,
       @Nullable String pickMode,
-      @Nullable List<String> aisles) {
+      @Nullable List<String> aisles,
+      @Nullable String waveId,
+      @Nullable String trfId) {
     Support.requireSelf(cdcId, workerId);
     Map<String, String> req = new LinkedHashMap<>();
     req.put("cdcId", cdcId);
@@ -146,6 +148,12 @@ public class TaskService {
     if (aisles != null && !aisles.isEmpty()) {
       req.put("aisles", String.join(",", new java.util.TreeSet<>(aisles)));
     }
+    if (waveId != null) {
+      req.put("waveId", waveId);
+    }
+    if (trfId != null) {
+      req.put("trfId", trfId);
+    }
     return idempotency.execute(
         Support.key(sourceSystem, requestId, OP_NEXT, workerId),
         req,
@@ -158,7 +166,7 @@ public class TaskService {
           }
           TaskRow cand =
               store
-                  .lockNextCandidate(cdcId, kind, zone, floor, pickMode, aisles)
+                  .lockNextCandidate(cdcId, kind, zone, floor, pickMode, aisles, waveId, trfId)
                   .orElseThrow(
                       () ->
                           new PmartException(

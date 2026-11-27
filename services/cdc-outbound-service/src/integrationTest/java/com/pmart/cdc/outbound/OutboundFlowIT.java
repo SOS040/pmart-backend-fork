@@ -324,7 +324,20 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
     assertThat(outbox("WaveStateChanged")).isEqualTo(1);
 
     // 5) 다음 작업 받기 — 한 사람 한 작업, 들고 있으면 같은 작업, 남은 게 없으면 409, 남의 이름 403
-    Res n1 = post(W1, "/cdcs/CDC01/workers/w1/next-tasks", Map.of());
+    // (0.34.0) waveId·trfId 거르기 — 다른 Wave·TRF 면 받을 것이 없다
+    assertThat(
+            post(W1, "/cdcs/CDC01/workers/w1/next-tasks", Map.of("waveId", "WAVE-none"))
+                .body()
+                .path("code")
+                .asString())
+        .isEqualTo("NO_TASK_AVAILABLE");
+    assertThat(
+            post(W1, "/cdcs/CDC01/workers/w1/next-tasks", Map.of("trfId", "TRF-none"))
+                .body()
+                .path("code")
+                .asString())
+        .isEqualTo("NO_TASK_AVAILABLE");
+    Res n1 = post(W1, "/cdcs/CDC01/workers/w1/next-tasks", Map.of("waveId", waveId, "trfId", trf1));
     assertThat(n1.status()).as(n1.body().toString()).isEqualTo(201);
     assertThat(n1.body().path("state").asString()).isEqualTo("ACCEPTED");
     String t1 = n1.body().path("taskId").asString();
