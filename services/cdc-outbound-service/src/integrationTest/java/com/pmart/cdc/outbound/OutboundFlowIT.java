@@ -584,6 +584,10 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
     withTemp.put("conditions", List.of(Map.of("kind", "TEMPERATURE_ZONE", "value", "CHILLED")));
     assertThat(post(SERVICE, "/internal/transfer-intakes", withTemp).status()).isEqualTo(202);
     assertThat(post(SERVICE, "/internal/transfer-intakes", withTemp).status()).isEqualTo(202);
+    JsonNode tempIntake = get(SERVICE, "/internal/transfer-intakes/" + trfT).body();
+    assertThat(tempIntake.path("conditions").path(0).path("kind").asString())
+        .isEqualTo("TEMPERATURE_ZONE");
+    assertThat(tempIntake.path("conditions").path(0).path("value").asString()).isEqualTo("CHILLED");
     JsonNode feed2 =
         get(
                 SERVICE,

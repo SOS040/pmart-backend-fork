@@ -231,6 +231,15 @@ public class InternalController implements InternalApi {
     out.setApprovalRef(t.approvalRef());
     out.setDeadlineMeaning(TransferIntake.DeadlineMeaningEnum.fromValue(t.deadlineMeaning()));
     out.setDueAt(Dto.time(t.dueAt()));
+    // 0.30.1 — 인수 때 받은 온도대(TEMPERATURE_ZONE)를 조회에도 돌려준다(DC 시뮬레이터 Wave 온도대, R-27 확인 2026-11-27)
+    String zone = transfers.temperatureZone(t.trfId());
+    if (zone != null) {
+      out.setConditions(
+          List.of(
+              new com.pmart.cdc.outbound.api.generated.model.TransferIntakeInputConditionsInner()
+                  .kind("TEMPERATURE_ZONE")
+                  .value(zone)));
+    }
     out.setLines(
         v.lines().stream()
             .map(

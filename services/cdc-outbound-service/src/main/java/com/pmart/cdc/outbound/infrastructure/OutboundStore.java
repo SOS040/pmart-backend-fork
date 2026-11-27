@@ -205,6 +205,16 @@ public class OutboundStore {
     jdbc.update("UPDATE transfer SET temperature_zone = ? WHERE trf_id = ?", zone, trfId);
   }
 
+  /** (0.30.1) 인수 때 받은 온도대 — 없으면 null. */
+  public @Nullable String temperatureZone(String trfId) {
+    return jdbc
+        .queryForList("SELECT temperature_zone FROM transfer WHERE trf_id = ?", String.class, trfId)
+        .stream()
+        .filter(java.util.Objects::nonNull)
+        .findFirst()
+        .orElse(null);
+  }
+
   /** 기한 [from, to) 인 이 센터 TRF — 기한·trfId 순, limit 개까지. */
   public List<FeedRow> transfersDue(String cdcId, Instant from, Instant to, int limit) {
     return jdbc.query(

@@ -85,6 +85,11 @@ public class TransferService {
     }
   }
 
+  /** (0.30.1) 인수 조건의 온도대(조회 응답용). */
+  public @Nullable String temperatureZone(String trfId) {
+    return store.temperatureZone(trfId);
+  }
+
   public CommandResult intake(String requestId, Intake in) {
     validate(in);
     String hash = hash(in);
