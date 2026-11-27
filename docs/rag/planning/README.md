@@ -18,6 +18,7 @@
 | [`2026-11-18-es-restructure-decisions.md`](2026-11-18-es-restructure-decisions.md) | 개편 계획 Q1~Q14 사용자 결정(11-18), 덧붙인 질문의 답(캐시·토크나이저·RankingPolicy·이름·digest·PG↔ES 상태 맞추기), 새 확인 사항 2개 | **취소**(2026-11-19 사용자 — 개편 안 함, 기록만) |
 | [`2026-11-27-es-hybrid-rag-proposal.md`](2026-11-27-es-hybrid-rag-proposal.md) | 사용자가 준 제안 원문 — PostgreSQL 정본 + ES(BM25 + kNN) 검색 전담 | **제안**(채택 결정 대기) |
 | [`2026-11-27-es-hybrid-rag-proposal-review.md`](2026-11-27-es-hybrid-rag-proposal-review.md) | 위 제안 리뷰 — 고칠 사실 3, 빠진 설계 6(근거 없음 판정 기준, **답 가로채기 단계** 등), 가로채기 먼저·병렬 비교는 결정 대기 | 작성 |
-| [`2026-11-27-es-first-hybrid-plan.md`](2026-11-27-es-first-hybrid-plan.md) | ES-First 하이브리드 RAG 계획 — 적재(ES 선 색인 → 임베딩 → pgvector, 폐기 전파), 검색 종료 지점 ①ES ②벡터 ③생성, 부하·시맨틱 캐시·추론 깊이, 단계 P0~P5 | **계획**(사용자 결정 대기) |
+| [`2026-11-27-quick-commerce-search-review.md`](2026-11-27-quick-commerce-search-review.md) | 「퀵커머스 직원·고객 검색 아키텍처」(PDF, 원본 안 둠) 리뷰 — 종료 지점 ①ES ②벡터 ③생성, 지금 구조와 비교, 보완 A~G, 넣을 조각 5 | **채택**(사용자 2026-11-27) |
+| [`2026-11-27-es-first-hybrid-plan.md`](2026-11-27-es-first-hybrid-plan.md) | ES-First 하이브리드 RAG 계획 — 적재(ES 선 색인 → 임베딩 → pgvector, 폐기 전파), 검색 종료 지점 ①ES ②벡터 ③생성, 부하·시맨틱 캐시·추론 깊이, 단계 P0~P5 | **계획**(방향: PDF 리뷰 채택 11-27, 단계 결정 대기) |
 
 그림을 고치면 영문판(`.en.svg`)도 같은 커밋에서 고친다.
