@@ -3,12 +3,14 @@ package com.pmart.mfc.inbound.infrastructure;
 import com.pmart.common.web.Downstream;
 import com.pmart.common.web.PmartException;
 import com.pmart.mfc.inbound.application.InboundProperties;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
@@ -42,10 +44,17 @@ public class CdcTransferIntakeClient {
     record Retry(String error) implements Result {}
   }
 
+  static final Duration READ_TIMEOUT = Duration.ofSeconds(15);
+
   private final RestClient http;
 
   public CdcTransferIntakeClient(RestClient.Builder builder, InboundProperties props) {
-    this.http = builder.baseUrl(props.cdcOutboundBaseUrl()).build();
+    // cdc-outbound 는 인수와 같은 요청 안에서 cdc-inventory 할당까지 해 기본 5초를 넘길 때가 있다(2026-11-27 LAN 냉장 TRF 첫 호출
+    // UNKNOWN_RESULT — 실제로는 인수됨, 재시도로 1분 늦음). 이 호출만 읽기 15초.
+    SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+    factory.setConnectTimeout(Duration.ofSeconds(2));
+    factory.setReadTimeout(READ_TIMEOUT);
+    this.http = builder.clone().baseUrl(props.cdcOutboundBaseUrl()).requestFactory(factory).build();
   }
 
   public Result send(Transfer t) {

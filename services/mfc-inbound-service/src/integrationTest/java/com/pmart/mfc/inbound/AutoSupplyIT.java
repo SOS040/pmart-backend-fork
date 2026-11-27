@@ -311,6 +311,24 @@ class AutoSupplyIT extends PostgresKafkaContainerSupport {
         .isEqualTo("SUBMITTED");
   }
 
+  /** 0.24.1: cdc-outbound 가 인수·할당에 5초 넘게 걸려도(기본 시간 제한) 이 호출은 15초까지 기다려 한 번에 보낸다. */
+  @Test
+  void slowCdcIntakeWithinFifteenSecondsIsSentAtOnce() {
+    String id = submit(Instant.now().plus(java.time.Duration.ofDays(1)), Map.of(C, 1));
+    inv.stubFor(
+        WireMock.post(urlPathEqualTo("/api/v1/internal/transfer-intakes"))
+            .withRequestBody(matchingJsonPath("$.trfId", equalTo("TRF-" + id)))
+            .willReturn(
+                aResponse()
+                    .withStatus(202)
+                    .withFixedDelay(6500)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody("{\"status\":\"ACCEPTED\",\"requestId\":\"x\",\"resultId\":\"x\"}")));
+    Res ok = call("POST", sup, "/supply-requests/" + id + "/approvals", Map.of("lines", List.of()));
+    assertThat(ok.status()).as(ok.body().toString()).isEqualTo(200);
+    assertThat(ok.body().path("transferSentAt").isNull()).as(ok.body().toString()).isFalse();
+  }
+
   /** CDC 가 내용으로 거절하면 멈추고 사유를 남긴다, 응답이 안 되면 다시 보낼 줄로 남는다. */
   @Test
   void cdcFailureIsKeptForRetryOrStops() {

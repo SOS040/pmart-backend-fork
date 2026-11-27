@@ -1,8 +1,12 @@
 openapi: 3.1.0
 info:
   title: transport-execution-service
-  version: 0.4.0
+  version: 0.5.0
   description: |
+    0.5.0(2026-11-27, DC 시뮬레이터 R-29 — 사용자 "mfc 에서 하차완료해야 자동으로 운행종료지"): MFC 인계(`…/stops/{seq}/handovers`)가 기록되면 그 정차를 인계 시각으로
+      **자동 출발**(DEPARTED), 모든 정차가 출발하면 운행을 **자동 COMPLETED**(endedAt = 마지막 정차 출발 시각). fleet 차량 점유는 노선 복귀 시간(returnMinutes) 뒤에 푼다
+      (사용자 결정 "자동 종료 + 복귀 시간 더함") — 그 전에 DC 복귀(`…/physical-ends`)를 등록하면 그때 푼다. 정차 출발 `…/departures` 는 그대로 받는다(이미 출발이면 그대로).
+      배포 전에 인계만 되고 남은 정차(HANDED_OVER)는 주기 작업이 인계 시각으로 출발·종료한다. 운행 기록(trip_event) STOP_DEPARTED·TRIP_COMPLETED. outbox 사건은 그대로(StopArrived 만).
     0.4.0(2026-11-27, 요청 TE-1 — MFC 입고 예정 자동 도착): 정차가 처음 ARRIVED 가 되면 같은 트랜잭션에서 outbox 로 `StopArrived`(tms.trip.v1, aggregate Trip —
       tripId·stopId `<tripId>-<seq>`·mfcId·sequence·arrivedAt·arrivalBasis DRIVER_INPUT·trfIds = 그 정차에 상차한 TRF). 이 서비스가 처음 내는 사건. API 모양은 그대로.
     0.3.0(2026-11-26, DK-2): 운행에 계획완료 때 배정한 도크 사본 dockCode·dockReservationId(planning 이 운행을 만들 때 준다 — 없으면 null).

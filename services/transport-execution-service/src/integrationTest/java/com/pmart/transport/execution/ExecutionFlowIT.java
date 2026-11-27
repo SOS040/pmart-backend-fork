@@ -294,6 +294,9 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     assertThat(h1.body().path("stops").get(0).path("handover").path("result").asString())
         .as(h1.body().toString())
         .isEqualTo("MATCHED");
+    // R-29(0.5.0): 인계 = 정차 자동 출발(마지막 정차가 아니라 운행은 그대로)
+    assertThat(h1.body().path("stops").get(0).path("state").asString()).isEqualTo("DEPARTED");
+    assertThat(h1.body().path("state").asString()).isEqualTo("DEPARTED");
     assertThat(call(BJG, t + "/stops/1/handovers", ho1).status()).isEqualTo(200);
     assertThat(
             call(
@@ -330,8 +333,17 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     assertThat(s2.path("result").asString()).isEqualTo("MISMATCHED");
     assertThat(s2.path("extraLpns").toString()).contains("BX");
     assertThat(h2.body().path("incidents").toString()).contains("QTY_MISMATCH");
+    // R-29: 마지막 정차 인계 = 정차 출발 + 운행 자동 COMPLETED, 차량 점유는 복귀 시간 뒤라 아직 안 풂
+    assertThat(h2.body().path("stops").get(1).path("state").asString()).isEqualTo("DEPARTED");
+    assertThat(h2.body().path("state").asString()).as(h2.body().toString()).isEqualTo("COMPLETED");
+    trips.retry();
+    assertThat(
+            fleet.findAll(
+                postRequestedFor(
+                    urlPathEqualTo("/api/v1/internal/reservations/FRS-" + id + "/releases"))))
+        .isEmpty();
 
-    // 6) 복귀 → COMPLETED·점유 해제·planning 에 인계된 TRF
+    // 6) DC 복귀 등록 → 점유 바로 해제(이미 COMPLETED), planning 에 인계된 TRF
     Res e = call(DC, t + "/physical-ends", Map.of());
     assertThat(e.body().path("state").asString()).as(e.body().toString()).isEqualTo("COMPLETED");
     assertThat(

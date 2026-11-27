@@ -448,6 +448,18 @@ public class TripService {
           String state = lockState(tripId);
           requireCdc(c, tripId);
           if ("COMPLETED".equals(state)) {
+            // R-29: 자동 종료 뒤 DC 복귀를 등록하면 그때 점유를 푼다(복귀 시간을 기다리지 않음)
+            Instant back = when(e);
+            int n =
+                jdbc.update(
+                    "UPDATE trip SET release_after = ? WHERE trip_id = ? AND NOT reservation_released"
+                        + " AND release_after IS NOT NULL AND release_after > ?",
+                    ts(back),
+                    tripId,
+                    ts(back));
+            if (n > 0) {
+              event(tripId, back, "PHYSICAL_END", null, e, c.actorId(), c.source());
+            }
             return;
           }
           if (!"DEPARTED".equals(state)) {
@@ -608,9 +620,55 @@ public class TripService {
           }
           bump(tripId, at);
           event(tripId, at, "HANDED_OVER", seq, e, c.actorId(), c.source());
+          // R-29: 하차·인계가 끝나면 그 정차는 출발, 마지막 정차면 운행 종료
+          autoDepart(tripId, seq, at, c.actorId(), c.source());
         });
+    releaseReservation(tripId);
     notifyPlanning(tripId);
     return view(tripId);
+  }
+
+  /**
+   * (0.5.0, 2026-11-27 DC 시뮬레이터 R-29 — 사용자 "mfc 에서 하차완료해야 자동으로 운행종료지") 인계된 정차를 그 시각으로 출발(DEPARTED)
+   * 시키고, 모든 정차가 출발했으면 운행을 COMPLETED(endedAt = 마지막 정차 출발 시각)로. 차량은 아직 DC 로 돌아오는 중이라 fleet 점유는 복귀
+   * 시간(return_minutes) 뒤에 푼다(release_after — 사용자 결정 "자동 종료 + 복귀 시간 더함"). 호출자 트랜잭션·운행 잠금 안.
+   */
+  private void autoDepart(String tripId, int seq, Instant at, String actor, String source) {
+    int n =
+        jdbc.update(
+            "UPDATE trip_stop SET state = 'DEPARTED', departed_at = ? WHERE trip_id = ? AND seq = ?"
+                + " AND state = 'HANDED_OVER'",
+            ts(at),
+            tripId,
+            seq);
+    if (n == 0) {
+      return;
+    }
+    event(tripId, at, "STOP_DEPARTED", seq, EventIn.none(), actor, source);
+    completeIfDone(tripId, at, actor, source);
+  }
+
+  /** 출차한 운행의 정차가 모두 출발했으면 COMPLETED — 점유 해제는 복귀 시간 뒤(R-29). */
+  private void completeIfDone(String tripId, Instant at, String actor, String source) {
+    Integer open =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM trip_stop WHERE trip_id = ? AND state <> 'DEPARTED'",
+            Integer.class,
+            tripId);
+    String state =
+        jdbc.queryForObject("SELECT state FROM trip WHERE trip_id = ?", String.class, tripId);
+    if (open == null || open > 0 || !"DEPARTED".equals(state)) {
+      return;
+    }
+    jdbc.update(
+        "UPDATE trip SET ended_at = ?, release_after = CAST(? AS timestamptz) + make_interval(mins => return_minutes)"
+            + " WHERE trip_id = ?",
+        ts(at),
+        ts(at),
+        tripId);
+    setState(tripId, "COMPLETED", null, at);
+    event(tripId, at, "TRIP_COMPLETED", null, EventIn.none(), actor, source);
+    log.info("운행 {} 마지막 정차 출발 → 자동 종료(점유 해제는 복귀 시간 뒤)", tripId);
   }
 
   public TripView departStop(Caller c, String tripId, int seq, EventIn e) {
@@ -634,7 +692,10 @@ public class TripService {
               seq);
           bump(tripId, at);
           event(tripId, at, "STOP_DEPARTED", seq, e, c.actorId(), c.source());
+          completeIfDone(tripId, at, c.actorId(), c.source()); // R-29
         });
+    releaseReservation(tripId);
+    notifyPlanning(tripId);
     return view(tripId);
   }
 
@@ -1021,8 +1082,10 @@ public class TripService {
   void releaseReservation(String tripId) {
     var rows =
         jdbc.queryForList(
-            "SELECT reservation_id FROM trip WHERE trip_id = ? AND state = 'COMPLETED' AND NOT reservation_released",
-            tripId);
+            "SELECT reservation_id FROM trip WHERE trip_id = ? AND state = 'COMPLETED' AND NOT"
+                + " reservation_released AND (release_after IS NULL OR release_after <= ?)",
+            tripId,
+            ts(clock.instant()));
     if (rows.isEmpty()) {
       return;
     }
@@ -1055,9 +1118,37 @@ public class TripService {
     }
     for (String id :
         jdbc.queryForList(
-            "SELECT trip_id FROM trip WHERE state = 'COMPLETED' AND NOT reservation_released LIMIT 50",
-            String.class)) {
+            "SELECT trip_id FROM trip WHERE state = 'COMPLETED' AND NOT reservation_released AND"
+                + " (release_after IS NULL OR release_after <= ?) LIMIT 50",
+            String.class,
+            ts(clock.instant()))) {
       releaseReservation(id);
+    }
+    // R-29 배포 전에 인계만 되고 남은 정차(HANDED_OVER) — 인계 시각으로 출발·종료
+    for (var r :
+        jdbc.queryForList(
+            "SELECT s.trip_id, s.seq FROM trip_stop s JOIN trip t ON t.trip_id = s.trip_id WHERE"
+                + " s.state = 'HANDED_OVER' AND t.state = 'DEPARTED' ORDER BY s.trip_id, s.seq LIMIT 50")) {
+      String id = (String) r.get("trip_id");
+      int seq = ((Number) r.get("seq")).intValue();
+      tx.executeWithoutResult(
+          st -> {
+            lockState(id);
+            var at =
+                jdbc.queryForObject(
+                    "SELECT handed_over_at FROM trip_stop WHERE trip_id = ? AND seq = ?",
+                    Timestamp.class,
+                    id,
+                    seq);
+            autoDepart(
+                id,
+                seq,
+                at == null ? clock.instant() : at.toInstant(),
+                "SYSTEM",
+                "transport-execution-service");
+          });
+      releaseReservation(id);
+      notifyPlanning(id);
     }
   }
 
