@@ -57,6 +57,9 @@ public class KnowledgeIngestor {
 
   private static final Logger log = LoggerFactory.getLogger(KnowledgeIngestor.class);
 
+  /** 비정상 종료로 남은 BUILDING 을 다음 색인이 FAILED 로 바꿀 때의 사유. */
+  public static final String ABANDONED_REASON = "이전 색인이 끝나지 않고 중단됨(다음 색인 시작 때 정리)";
+
   /** git revision·작업 트리 상태. 없으면 revision=null, dirty=true(확인 불가 = 재현 보장 없음). */
   public interface SourceRevision {
     @Nullable String revision(Path repo);
@@ -100,6 +103,10 @@ public class KnowledgeIngestor {
         throw new IngestFailedException("다른 색인 작업이 진행 중입니다(INGEST 잠금).", null);
       }
       try {
+        int abandoned = snapshots.failAbandonedBuilding(ABANDONED_REASON);
+        if (abandoned > 0) {
+          log.warn("이전 색인이 중단돼 남은 BUILDING 스냅숏 {}개를 FAILED 로 바꿈", abandoned);
+        }
         return ingestLocked(repo, manifest);
       } finally {
         unlock(lockConn);

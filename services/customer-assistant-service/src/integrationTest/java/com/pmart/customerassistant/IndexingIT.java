@@ -7,6 +7,7 @@ import com.pmart.customerassistant.application.KnowledgeJobs;
 import com.pmart.customerassistant.infrastructure.AdvisoryLocks;
 import com.pmart.customerassistant.infrastructure.AnswerStore;
 import com.pmart.customerassistant.infrastructure.SnapshotStore;
+import com.pmart.customerassistant.infrastructure.ingest.KnowledgeIngestor;
 import com.pmart.customerassistant.infrastructure.ingest.KnowledgeIngestor.IngestFailedException;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -144,6 +145,37 @@ class IndexingIT extends AssistantITBase {
       }
     }
     assertThat(activeSnapshot()).isEqualTo(ok.snapshotId());
+  }
+
+  @Test
+  void abandonedBuildingIsFailedByNextIngestAndThenPruned() {
+    var first = ingest();
+    // 색인 도중 프로세스가 죽은 것처럼 BUILDING 을 남긴다(FAILED 로 바꿀 기회가 없었다)
+    jdbc.update(
+        """
+        INSERT INTO index_snapshot (snapshot_id, embedding_model, embedding_model_version, embedding_dim,
+          preprocessing_hash, manifest_hash, source_dirty, state, created_at)
+        SELECT 'SNAP-abandoned', embedding_model, embedding_model_version, embedding_dim,
+          preprocessing_hash, manifest_hash, source_dirty, 'BUILDING', ?
+        FROM index_snapshot WHERE snapshot_id = ?
+        """,
+        Timestamp.from(Instant.now().minus(Duration.ofDays(1))),
+        first.snapshotId());
+    assertThat(jobs.pruneSnapshots()).as("BUILDING 은 정리 대상이 아니다").isZero();
+
+    var second = ingest();
+    assertThat(activeSnapshot()).isEqualTo(second.snapshotId());
+    var abandoned = snapshots.find("SNAP-abandoned").orElseThrow();
+    assertThat(abandoned.state()).isEqualTo("FAILED");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT failure_reason FROM index_snapshot WHERE snapshot_id = 'SNAP-abandoned'",
+                String.class))
+        .isEqualTo(KnowledgeIngestor.ABANDONED_REASON);
+    // 방금 RETIRED 된 first 는 유예 안이라 남고, 하루 전에 버려진 것만 지워진다
+    assertThat(jobs.pruneSnapshots()).isEqualTo(1);
+    assertThat(snapshots.find("SNAP-abandoned")).isEmpty();
+    assertThat(snapshots.find(first.snapshotId())).isPresent();
   }
 
   @Test
