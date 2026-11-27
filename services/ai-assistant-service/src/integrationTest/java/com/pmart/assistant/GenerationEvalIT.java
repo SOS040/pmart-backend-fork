@@ -299,13 +299,15 @@ class GenerationEvalIT extends AssistantITBase {
         "- 라벨: OK = 근거로 성립하는 옳은 답, WRONG = 근거와 다르거나 지어낸 답, PARTIAL = 옳지만 핵심이 빠짐(통과해도 됨으로 셈)\n");
     sb.append(
         "- 잘못 거절 = OK·PARTIAL 인데 검사 실패, 잘못 통과 = WRONG 인데 검사 통과. 지금 LAN 은 bigram 0.5·유사도 0.65\n\n");
-    sb.append("| bigram 하한 | 유사도 하한 | 잘못 거절 | 잘못 통과 | 잘못 통과한 시도 |\n|---|---|---|---|---|\n");
+    sb.append(
+        "| bigram 하한 | 유사도 하한 | 잘못 거절 | 잘못 통과 | 잘못 거절한 시도 | 잘못 통과한 시도 |\n|---|---|---|---|---|---|\n");
     int labelled = 0;
     for (double ov : overlaps) {
       for (double si : sims) {
         int falseReject = 0;
         int falsePass = 0;
         List<String> passedWrong = new ArrayList<>();
+        List<String> rejectedRight = new ArrayList<>();
         labelled = 0;
         for (JsonNode rec : root.path("records")) {
           if (!rec.has("attempts")) {
@@ -336,6 +338,7 @@ class GenerationEvalIT extends AssistantITBase {
                     .valid();
             if (!valid && !"WRONG".equals(label)) {
               falseReject++;
+              rejectedRight.add(key);
             }
             if (valid && "WRONG".equals(label)) {
               falsePass++;
@@ -346,11 +349,12 @@ class GenerationEvalIT extends AssistantITBase {
         sb.append(
             String.format(
                 Locale.ROOT,
-                "| %.2f | %.3f | %d | %d | %s |%n",
+                "| %.2f | %.3f | %d | %d | %s | %s |%n",
                 ov,
                 si,
                 falseReject,
                 falsePass,
+                String.join(" ", rejectedRight),
                 String.join(" ", passedWrong)));
       }
     }
