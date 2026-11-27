@@ -25,6 +25,13 @@ import tools.jackson.databind.JsonNode;
  */
 final class OllamaEvalEmbedding implements DescribedEmbeddingModel {
 
+  /**
+   * LAN 과 같은 실행 옵션(pmart-config ai-assistant-service-lan.yml — embedding-num-gpu
+   * 0·embedding-num-ctx 2048). 다르면 Ollama 가 같은 모델을 다른 설정으로 다시 올려, LAN 에서 함께 쓰는 GPU(답변 모델)와 다투거나 LAN
+   * 요청과 번갈아 다시 올린다(2026-11-27).
+   */
+  static final Map<String, Object> OPTIONS = Map.of("num_gpu", 0, "num_ctx", 2048);
+
   static final String QWEN_INSTRUCT =
       "Instruct: Given a question about company policy or operating procedures, retrieve the"
           + " document passages that answer it\nQuery: ";
@@ -99,7 +106,16 @@ final class OllamaEvalEmbedding implements DescribedEmbeddingModel {
         http.post()
             .uri("/api/embed")
             .contentType(MediaType.APPLICATION_JSON)
-            .body(Map.of("model", model, "input", List.of(input)))
+            .body(
+                Map.of(
+                    "model",
+                    model,
+                    "input",
+                    List.of(input),
+                    "options",
+                    OPTIONS,
+                    "keep_alive",
+                    "24h"))
             .retrieve()
             .body(JsonNode.class);
     nanos += System.nanoTime() - t0;
