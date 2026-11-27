@@ -737,6 +737,7 @@ POST /api/v1/riders/me/withdrawals RIDER
 POST /api/v1/riders/phone-checks RIDER
 POST /api/v1/riders/restriction-reviews/{reviewId}/decisions OPERATOR
 POST /api/v1/riders/signups RIDER
+POST /api/v1/riders/{riderId}/duty-ends OPERATOR
 POST /api/v1/riders/{riderId}/pii-reveals OPERATOR
 POST /api/v1/riders/{riderId}/restrictions OPERATOR
 POST /api/v1/serviceability-checks PUBLIC
