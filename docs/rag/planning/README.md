@@ -16,5 +16,7 @@
 | [`2026-11-07-rag-architecture-backoffice.en.svg`](2026-11-07-rag-architecture-backoffice.en.svg) · [`2026-11-07-rag-architecture-customer.en.svg`](2026-11-07-rag-architecture-customer.en.svg) | 위 두 그림의 영문판(같은 배치, 글만 영어. 긴 글에 맞춰 화살표 시작점만 옮김) | 작성 |
 | [`2026-11-18-es-hybrid-restructure-plan.md`](2026-11-18-es-hybrid-restructure-plan.md) | RAG 구조 개편 계획 — RAG 전용 Elasticsearch(BM25 + kNN → RRF → 리랭커), 1,024토큰 청킹, pgvector 제외. 현재와 차이·단계·결정 대기 Q1~Q14 | **취소**(2026-11-19 사용자 — 개편 안 함, 기록만) |
 | [`2026-11-18-es-restructure-decisions.md`](2026-11-18-es-restructure-decisions.md) | 개편 계획 Q1~Q14 사용자 결정(11-18), 덧붙인 질문의 답(캐시·토크나이저·RankingPolicy·이름·digest·PG↔ES 상태 맞추기), 새 확인 사항 2개 | **취소**(2026-11-19 사용자 — 개편 안 함, 기록만) |
+| [`2026-11-27-es-hybrid-rag-proposal.md`](2026-11-27-es-hybrid-rag-proposal.md) | 사용자가 준 제안 원문 — PostgreSQL 정본 + ES(BM25 + kNN) 검색 전담 | **제안**(채택 결정 대기) |
+| [`2026-11-27-es-hybrid-rag-proposal-review.md`](2026-11-27-es-hybrid-rag-proposal-review.md) | 위 제안 리뷰 — 고칠 사실 3, 빠진 설계 6(근거 없음 판정 기준, **답 가로채기 단계** 등), 가로채기 먼저·병렬 비교는 결정 대기 | 작성 |
 
 그림을 고치면 영문판(`.en.svg`)도 같은 커밋에서 고친다.
