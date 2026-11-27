@@ -4,6 +4,7 @@
 - 작성: pmart-backend, 2026-11-27 (PC 1)
 - 답하는 것: pmart-clients `docs/handoff/mfc-app/2026-11-27-backend-worker-choose-task.md` 의 **DC 부분만**. MFC 부분(mfc-capacity-service)은 mfc 영역(PC 3)이 따로 답한다(사용자 2026-11-27 "mfc 는 mfc가 담당하는데 dc 부분만 하면돼").
 - 계약: `contracts/openapi/cdc-outbound-service.yaml` **0.36.0**. LAN 반영은 PC 1 배포 뒤(배포하면 이 줄 아래에 적는다).
+- **LAN 반영 2026-11-27**: cdc-outbound `973b37c3b`(pc3, digest `sha256:a0f91ec8…`)·api-gateway 같은 커밋(pc4, `sha256:02346c9a…`)·pmart-config `dc23446`. 게이트웨이 경유 두 경로 모두 cdc-outbound 까지 닿음 확인(센터 권한 없는 토큰 → 서비스 403).
 
 ## 1. 대기 목록 — `GET /cdcs/{cdcId}/workers/{workerId}/available-tasks`
 - 작업자 본인 토큰만(남의 이름 403).
