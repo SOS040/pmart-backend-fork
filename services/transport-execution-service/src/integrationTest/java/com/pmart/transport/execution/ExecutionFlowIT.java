@@ -46,7 +46,8 @@ import tools.jackson.databind.ObjectMapper;
     properties = {
       "spring.main.banner-mode=off",
       "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks",
-      "pmart.execution.retry-interval=PT1H"
+      "pmart.execution.retry-interval=PT1H",
+      "pmart.messaging.outbox.delete-after-insert=false"
     })
 @Import(TestJwtConfiguration.class)
 @EnableWireMock({
@@ -70,6 +71,7 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
   @LocalServerPort int port;
   @Autowired ObjectMapper mapper;
   @Autowired TripService trips;
+  @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
 
   @InjectWireMock("outbound")
   WireMockServer outbound;
@@ -263,6 +265,20 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     Res a1 = call(BJG, t + "/stops/1/arrivals", Map.of());
     assertThat(a1.body().path("stops").get(0).path("state").asString()).isEqualTo("ARRIVED");
     assertThat(a1.body().path("stops").get(0).path("delayed").asBoolean()).isFalse();
+    // TE-1(0.4.0): 처음 도착 = StopArrived 하나(tms.trip.v1), trfIds = 상차한 TRF 만(TRF-B 미상차는 뺌)
+    assertThat(call(BJG, t + "/stops/1/arrivals", Map.of()).status()).isEqualTo(200);
+    var arrived =
+        jdbc.queryForList(
+            "SELECT payload::text FROM outbox_event WHERE type = 'StopArrived' AND topic = 'tms.trip.v1'"
+                + " AND aggregateid = ?",
+            String.class,
+            id);
+    assertThat(arrived).hasSize(1);
+    JsonNode sa = mapper.readTree(arrived.getFirst()).path("payload");
+    assertThat(sa.path("mfcId").asString()).isEqualTo("MFC-BJG-01");
+    assertThat(sa.path("sequence").asInt()).isEqualTo(1);
+    assertThat(sa.path("stopId").asString()).isEqualTo(id + "-1");
+    assertThat(sa.path("trfIds").toString()).isEqualTo("[\"TRF-A\"]");
     assertThat(call(DC, t + "/physical-ends", Map.of()).body().path("code").asString())
         .isEqualTo("STOPS_OPEN");
     assertThat(call(BJG, t + "/stops/1/departures", Map.of()).body().path("code").asString())

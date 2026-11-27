@@ -10,4 +10,4 @@ pmart:
     planning-base-url: http://transport-planning-service:8701
     fleet-base-url: http://fleet-service:8703
     retry-interval: PT30S # 출발 검증·planning 알림·점유 해제 다시 보내기
-# 이벤트 소비·발행 없음(1단계 — 설계 §6)
+# 이벤트 소비 없음. 발행(0.4.0, 2026-11-27 TE-1): StopArrived → tms.trip.v1(outbox, Debezium outbox-transport-execution-service)

@@ -1,8 +1,10 @@
 openapi: 3.1.0
 info:
   title: transport-execution-service
-  version: 0.3.0
+  version: 0.4.0
   description: |
+    0.4.0(2026-11-27, 요청 TE-1 — MFC 입고 예정 자동 도착): 정차가 처음 ARRIVED 가 되면 같은 트랜잭션에서 outbox 로 `StopArrived`(tms.trip.v1, aggregate Trip —
+      tripId·stopId `<tripId>-<seq>`·mfcId·sequence·arrivedAt·arrivalBasis DRIVER_INPUT·trfIds = 그 정차에 상차한 TRF). 이 서비스가 처음 내는 사건. API 모양은 그대로.
     0.3.0(2026-11-26, DK-2): 운행에 계획완료 때 배정한 도크 사본 dockCode·dockReservationId(planning 이 운행을 만들 때 준다 — 없으면 null).
     간선 운행·정차·실제 출발 사실(departureId)·인계 증빙·운행 예외·예상 도착의 정본. (docs/architecture/service-map.md §6)
     TOUT 전기는 cdc-inventory(cdc-outbound 출발 검증이 부른다), TIN 은 mfc-inventory, 배차·재배정은 transport-planning, 차량·기사는 fleet.

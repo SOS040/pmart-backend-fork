@@ -30,3 +30,4 @@
   - 예상 도착·지연은 조회 때 계산(`domain/TripRules` — 실제 출차·도착부터 남은 구간 + 하차 30분, 계획 + 30분 또는 D+1 07:30 초과 = 지연 플래그). 저장 안 함.
   - **사건 발행 없음**(설계 §6 — TruckActuallyDeparted 줄 SKU·LOT 을 모름, 구독자 없음). 도크 배정·온도 이탈·운임 근거는 뒤로.
 - 0.3.0(2026-11-26, DK-2): 운행에 도크 사본 `dock_code`·`dock_reservation_id`(Flyway V3 — planning 이 준 값, 없으면 null). 도크 해제는 planning 몫.
+- 0.4.0(2026-11-27, 요청 TE-1 — PC 3, cdc 세션 대신 PC1): 정차가 처음 ARRIVED 가 되면 같은 트랜잭션에서 outbox 로 `StopArrived`(tms.trip.v1, aggregate Trip, `TripService.publishStopArrived`) — tripId·stopId `<tripId>-<seq>`·mfcId·sequence·arrivedAt·arrivalBasis DRIVER_INPUT·trfIds = 그 정차에 **상차한** TRF. 이 서비스의 첫 사건(Debezium `outbox-transport-execution-service` 는 이미 등록됨). 구독 mfc-inbound 0.24.0(입고 예정 자동 도착). 시험 `ExecutionFlowIT`(outbox 한 줄·미상차 TRF 뺌).

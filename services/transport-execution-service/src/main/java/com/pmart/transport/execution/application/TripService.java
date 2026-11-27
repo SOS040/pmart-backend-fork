@@ -1,5 +1,7 @@
 package com.pmart.transport.execution.application;
 
+import com.pmart.common.messaging.EventEnvelope;
+import com.pmart.common.messaging.EventPublisher;
 import com.pmart.common.security.PmartPrincipal;
 import com.pmart.common.web.ErrorCode;
 import com.pmart.common.web.PmartException;
@@ -208,13 +210,16 @@ public class TripService {
   private final Clients clients;
   private final ObjectMapper mapper;
   private final Clock clock;
+  private final EventPublisher events;
 
   public TripService(
       JdbcTemplate jdbc,
       TransactionTemplate tx,
       Clients clients,
       ObjectMapper mapper,
-      Clock clock) {
+      Clock clock,
+      EventPublisher events) {
+    this.events = events;
     this.jdbc = jdbc;
     this.tx = tx;
     this.clients = clients;
@@ -498,6 +503,7 @@ public class TripService {
               seq);
           bump(tripId, at);
           event(tripId, at, "STOP_ARRIVED", seq, e, c.actorId(), c.source());
+          publishStopArrived(tripId, seq, mfc, at, c.actorId());
         });
     notifyPlanning(tripId);
     return view(tripId);
@@ -1135,6 +1141,40 @@ public class TripService {
         state,
         ts(clock.instant()),
         tripId);
+  }
+
+  /**
+   * (0.4.0, 2026-11-27 요청 TE-1 — MFC 입고 예정 자동 도착) 처음 ARRIVED 가 된 같은 트랜잭션에서 outbox 로 {@code
+   * StopArrived} (tms.trip.v1, aggregate Trip). trfIds = 그 정차에 실린(상차한) TRF — 싣지 않은 TRF 는 오지 않았으니
+   * 뺀다. 수량 증거가 아니다. 도착은 사람이 API 로 등록하므로 arrivalBasis DRIVER_INPUT.
+   */
+  private void publishStopArrived(
+      String tripId, int seq, String mfcId, Instant at, String actorId) {
+    List<String> trfIds =
+        jdbc.queryForList(
+            "SELECT trf_id FROM trip_transfer WHERE trip_id = ? AND stop_seq = ? AND loaded ORDER BY"
+                + " trf_id",
+            String.class,
+            tripId,
+            seq);
+    Long version =
+        jdbc.queryForObject("SELECT version FROM trip WHERE trip_id = ?", Long.class, tripId);
+    Map<String, Object> p = new LinkedHashMap<>();
+    p.put("tripId", tripId);
+    p.put("stopId", tripId + "-" + seq);
+    p.put("mfcId", mfcId);
+    p.put("sequence", seq);
+    p.put("arrivedAt", at.toString());
+    p.put("arrivalBasis", "DRIVER_INPUT");
+    p.put("trfIds", trfIds);
+    events.publish(
+        "StopArrived",
+        1,
+        "Trip",
+        tripId,
+        version == null ? 1L : version,
+        new EventEnvelope.Actor(EventEnvelope.ActorType.OPERATOR, actorId),
+        p);
   }
 
   private void bump(String tripId, Instant at) {
